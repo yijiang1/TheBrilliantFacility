@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Balance Calculator — The Brilliant Facility</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#eef4fc; font-family:'Courier New',monospace; color:#1a2a3a; font-size:13px; }
+
+header {
+  background:#0d3a8a; color:#fff;
+  padding:14px 24px; display:flex; align-items:center; justify-content:space-between;
+}
+header h1 { font-size:16px; letter-spacing:3px; }
+header span { font-size:10px; color:#8ab4e8; letter-spacing:1px; }
+
+.tabs { background:#dce8f4; display:flex; border-bottom:2px solid #aabbcc; gap:2px; padding:0 8px; }
+.tab-btn {
+  padding:9px 18px; cursor:pointer;
+  font-family:'Courier New',monospace; font-size:12px; letter-spacing:1px;
+  border:none; background:none; color:#4a6a8a; border-bottom:2px solid transparent; margin-bottom:-2px;
+}
+.tab-btn.active { background:#eef4fc; color:#0d3a8a; font-weight:bold; border-bottom:2px solid #0d3a8a; }
+.tab-btn:hover:not(.active) { background:#c8daf0; }
+
+.tab-content { display:none; padding:16px; gap:14px; min-height:calc(100vh - 100px); }
+.tab-content.active { display:flex; }
+
+/* Panels */
+.panel {
+  background:#fff; border:1px solid #c0ccda; border-radius:3px; padding:14px;
+}
+.panel-title {
+  font-size:10px; letter-spacing:2px; color:#2a5a8a; font-weight:bold;
+  margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #dde8f0;
+  text-transform:uppercase;
+}
+
+/* Sidebar */
+.sidebar { width:270px; flex-shrink:0; display:flex; flex-direction:column; gap:10px; }
+
+/* Param groups */
+.section-label {
+  font-size:10px; letter-spacing:1px; color:#8aabcc; text-transform:uppercase;
+  margin:10px 0 6px; font-weight:bold;
+}
+.param-group { margin-bottom:8px; }
+.param-group label {
+  display:flex; justify-content:space-between; align-items:center;
+  font-size:11px; color:#3a5a7a; margin-bottom:3px;
+}
+.param-group label .val {
+  font-weight:bold; color:#0d3a8a; background:#eef4fc;
+  padding:0 5px; border-radius:2px; font-size:12px; min-width:36px; text-align:right;
+}
+input[type=range] { width:100%; height:3px; cursor:pointer; accent-color:#1a6aaa; }
+
+/* Main content area */
+.main-col { flex:1; display:flex; flex-direction:column; gap:12px; min-width:0; }
+.chart-row { display:flex; gap:12px; }
+.chart-row .panel { flex:1; min-width:0; }
+
+/* Tables */
+table { width:100%; border-collapse:collapse; }
+th {
+  background:#dce8f4; color:#0d3a8a; padding:5px 8px;
+  text-align:left; font-size:10px; letter-spacing:1px; font-weight:bold;
+}
+td { padding:5px 8px; border-bottom:1px solid #eef0f6; font-size:12px; }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:#f4f8ff; }
+.num { text-align:right; font-weight:bold; }
+.rep { color:#b38600; }
+.fund { color:#1a6a3a; }
+.ring-good { color:#1a6a3a; }
+.ring-ok   { color:#aa5500; }
+.ring-bad  { color:#cc1100; }
+
+/* Metric cards */
+.metric-row { display:flex; gap:10px; margin-bottom:12px; }
+.metric-card {
+  flex:1; padding:10px 12px; border-radius:3px;
+  background:#f0f6ff; border:1px solid #b8ccdd;
+}
+.metric-card.green { background:#e8f8ec; border-color:#4a9a6a; }
+.metric-card.amber { background:#fff8e0; border-color:#ccaa30; }
+.metric-card.red   { background:#fff0ec; border-color:#cc8866; }
+.metric-label { font-size:10px; letter-spacing:1px; color:#7a9aaa; text-transform:uppercase; margin-bottom:3px; }
+.metric-value { font-size:22px; font-weight:bold; color:#0d3a8a; }
+.metric-sub { font-size:10px; color:#4a6a8a; margin-top:2px; }
+
+/* Badges */
+.badge {
+  display:inline-block; padding:1px 7px; border-radius:2px;
+  font-size:10px; font-weight:bold; letter-spacing:0.5px;
+}
+.badge-rep   { background:#fff8e0; color:#b38600; border:1px solid #ddb830; }
+.badge-fund  { background:#e8f8ec; color:#1a7a3a; border:1px solid #4a9a5a; }
+.badge-warn  { background:#fff0ec; color:#cc3300; border:1px solid #cc8866; }
+.badge-info  { background:#eef4ff; color:#1a4a8a; border:1px solid #8ab4dd; }
+
+/* Insight box */
+.insights { background:#f4f8ff; border:1px solid #a0b8d0; border-radius:3px; padding:10px 12px; }
+.insights p { font-size:11px; color:#1a4a6a; line-height:1.9; }
+.insights p::before { content:'▸ '; color:#4a8aaa; }
+
+/* Run button */
+.run-btn {
+  width:100%; padding:10px; background:#0d3a8a; color:#fff;
+  border:none; font-family:'Courier New',monospace; font-size:13px;
+  letter-spacing:2px; cursor:pointer; border-radius:2px; margin-top:6px;
+}
+.run-btn:hover { background:#1a5aaa; }
+
+/* Note */
+.note { font-size:10px; color:#7a9aaa; margin-top:6px; line-height:1.6; }
+.warn-note { font-size:11px; color:#aa4400; background:#fff4ec; border:1px solid #cc9966; border-radius:2px; padding:6px 10px; margin-top:8px; line-height:1.5; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>THE BRILLIANT FACILITY — BALANCE CALCULATOR</h1>
+  <span>DESIGN TOOL · NOT PART OF THE GAME</span>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="showTab('economy', this)">ECONOMY</button>
+  <button class="tab-btn" onclick="showTab('proposals', this)">PROPOSALS</button>
+  <button class="tab-btn" onclick="showTab('throughput', this)">THROUGHPUT</button>
+  <button class="tab-btn" onclick="showTab('montecarlo', this)">SIMULATION</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     ECONOMY TAB
+══════════════════════════════════════════════════════════════ -->
+<div id="tab-economy" class="tab-content active">
+
+  <div class="sidebar">
+    <div class="panel">
+      <div class="panel-title">Parameters</div>
+
+      <div class="section-label">Simulation</div>
+      <div class="param-group">
+        <label>Years to simulate <span class="val" id="v-years">4</span></label>
+        <input type="range" id="p-years" min="1" max="8" value="4" oninput="updateEconomy()">
+      </div>
+      <div class="param-group">
+        <label>Proposals completed / cycle <span class="val" id="v-props">2</span></label>
+        <input type="range" id="p-props" min="0" max="5" value="2" oninput="updateEconomy()">
+      </div>
+      <div class="param-group">
+        <label>Avg samples / proposal <span class="val" id="v-spp">2.5</span></label>
+        <input type="range" id="p-spp" min="1" max="5" step="0.5" value="2.5" oninput="updateEconomy()">
+      </div>
+      <div class="param-group">
+        <label>Failed commitments / cycle <span class="val" id="v-fail">0</span></label>
+        <input type="range" id="p-fail" min="0" max="3" value="0" oninput="updateEconomy()">
+      </div>
+
+      <div class="section-label">Reputation</div>
+      <div class="param-group">
+        <label>Rep bonus / extra sample <span class="val" id="v-rbonus">8</span></label>
+        <input type="range" id="p-rbonus" min="0" max="20" value="8" oninput="updateEconomy()">
+      </div>
+      <div class="param-group">
+        <label>Flat penalty per failure <span class="val" id="v-pen">8</span></label>
+        <input type="range" id="p-pen" min="0" max="40" value="8" oninput="updateEconomy()">
+      </div>
+
+      <div class="section-label">Funding</div>
+      <div class="param-group">
+        <label>Starting funding <span class="val" id="v-sf">400</span></label>
+        <input type="range" id="p-sf" min="0" max="800" step="50" value="400" oninput="updateEconomy()">
+      </div>
+      <div class="param-group">
+        <label>Base annual grant <span class="val" id="v-bg">400</span></label>
+        <input type="range" id="p-bg" min="0" max="800" step="50" value="400" oninput="updateEconomy()">
+      </div>
+      <div class="param-group">
+        <label>Funding multiplier (× rep) <span class="val" id="v-fm">3</span></label>
+        <input type="range" id="p-fm" min="0" max="8" step="0.5" value="3" oninput="updateEconomy()">
+      </div>
+      <div class="param-group">
+        <label>Carryover cap <span class="val" id="v-cap">200</span></label>
+        <input type="range" id="p-cap" min="0" max="600" step="50" value="200" oninput="updateEconomy()">
+      </div>
+
+      <div class="section-label">Ring Stability</div>
+      <div class="param-group">
+        <label>Starting stability % <span class="val" id="v-rs">98</span></label>
+        <input type="range" id="p-rs" min="50" max="100" value="98" oninput="updateEconomy()">
+      </div>
+      <div class="param-group">
+        <label>Decay / cycle % <span class="val" id="v-rd">2</span></label>
+        <input type="range" id="p-rd" min="0" max="6" step="0.5" value="2" oninput="updateEconomy()">
+      </div>
+    </div>
+
+    <div class="panel insights" id="insights-box">
+      <div class="panel-title">Insights</div>
+      <div id="insights-text"></div>
+    </div>
+  </div>
+
+  <div class="main-col">
+    <div class="panel">
+      <div class="panel-title">Year-by-Year Progression</div>
+      <div id="econ-table"></div>
+    </div>
+    <div class="chart-row">
+      <div class="panel">
+        <div class="panel-title">Cumulative Reputation ⭐</div>
+        <canvas id="chart-rep" height="170"></canvas>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Funding Available at Year End 💰</div>
+        <canvas id="chart-fund" height="170"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     PROPOSALS TAB
+══════════════════════════════════════════════════════════════ -->
+<div id="tab-proposals" class="tab-content">
+
+  <div class="sidebar">
+    <div class="panel">
+      <div class="panel-title">Parameters</div>
+      <div class="param-group">
+        <label>Rep bonus / extra sample <span class="val" id="v-prbonus">8</span></label>
+        <input type="range" id="p-prbonus" min="0" max="20" value="8" oninput="updateProposals()">
+      </div>
+      <div class="param-group">
+        <label>Shown penalty (× rep) <span class="val" id="v-prmult">0.35</span></label>
+        <input type="range" id="p-prmult" min="0" max="0.8" step="0.05" value="0.35" oninput="updateProposals()">
+      </div>
+      <div class="param-group">
+        <label>Actual applied penalty <span class="val" id="v-prapplied">8</span></label>
+        <input type="range" id="p-prapplied" min="0" max="40" value="8" oninput="updateProposals()">
+      </div>
+      <div class="warn-note">
+        ⚠ In the current code, the proposal card shows a proportional penalty (rep × 0.35) but the game actually applies a flat −8 per failed commitment. These sliders let you compare both.
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Rep Distribution</div>
+      <canvas id="chart-proposals" height="280"></canvas>
+    </div>
+  </div>
+
+  <div class="main-col">
+    <div class="panel">
+      <div class="panel-title">Application Types</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Application</th>
+            <th>Samples</th>
+            <th>Base Rep</th>
+            <th>Min Rep</th>
+            <th>Avg Rep</th>
+            <th>Max Rep</th>
+            <th>Shown Penalty</th>
+            <th>Actual Penalty</th>
+            <th>Rep / Sample</th>
+          </tr>
+        </thead>
+        <tbody id="proposals-tbody"></tbody>
+        <tfoot id="proposals-tfoot"></tfoot>
+      </table>
+      <div class="note" id="proposals-note"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Proposal Value Balance — Rep Range by Application</div>
+      <canvas id="chart-prop-bar" height="200"></canvas>
+      <div class="note">Bars show min/avg/max rep achievable. Goal: top application shouldn't be more than ~3× the bottom.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     THROUGHPUT TAB
+══════════════════════════════════════════════════════════════ -->
+<div id="tab-throughput" class="tab-content">
+
+  <div class="sidebar">
+    <div class="panel">
+      <div class="panel-title">Station Timing</div>
+      <div style="font-size:10px;color:#7a9aaa;margin-bottom:8px;line-height:1.5;">
+        Time scale: <strong>2 s = 1 game day</strong>; 1 cycle = 90 days.<br>
+        ✅ = scientifically grounded &nbsp;|&nbsp; 🎮 = gameplay-tuned
+      </div>
+
+      <div class="section-label">Cycle</div>
+      <div class="param-group">
+        <label>Cycle duration (s) <span class="val" id="v-cdur">180</span></label>
+        <input type="range" id="p-cdur" min="60" max="360" step="30" value="180" oninput="updateThroughput()">
+        <div style="font-size:10px;color:#5a9a6a;">✅ 180 s = 90 days — matches real synchrotron cycle length</div>
+      </div>
+
+      <div class="section-label">Processing (base)</div>
+      <div class="param-group">
+        <label>Prep time (s) <span class="val" id="v-pt">1.5</span></label>
+        <input type="range" id="p-pt" min="0.5" max="8" step="0.1" value="1.5" oninput="updateThroughput()">
+        <div style="font-size:10px;color:#5a9a6a;">✅ 1.0–2.0 s in game = 0.5–1.0 days — matches real sample mounting/prep time</div>
+      </div>
+      <div class="param-group">
+        <label>Exp setup (s) <span class="val" id="v-et">1.2</span></label>
+        <input type="range" id="p-et" min="0.5" max="6" step="0.1" value="1.2" oninput="updateThroughput()">
+        <div style="font-size:10px;color:#5a9a6a;">✅ 1.2 s = 0.6 days — within real range (0.5–1.0 day) for sample loading, hutch search &amp; door close</div>
+      </div>
+      <div class="param-group">
+        <label>Measurement (s) <span class="val" id="v-mt">3.0</span></label>
+        <input type="range" id="p-mt" min="0.5" max="10" step="0.1" value="3.0" oninput="updateThroughput()">
+        <div style="font-size:10px;color:#b87a20;">🎮 3.0 s = 1.5 days — real scans are hours per sample; extended for gameplay tension</div>
+      </div>
+      <div class="param-group">
+        <label>Walk time / station (s) <span class="val" id="v-wt">3.0</span></label>
+        <input type="range" id="p-wt" min="1" max="8" step="0.5" value="3.0" oninput="updateThroughput()">
+        <div style="font-size:10px;color:#7a9aaa;">Player movement — no real-world equivalent</div>
+      </div>
+
+      <div class="section-label">Upgrades</div>
+      <div class="param-group">
+        <label>Active job slots <span class="val" id="v-slots">3</span></label>
+        <input type="range" id="p-slots" min="1" max="5" value="3" oninput="updateThroughput()">
+      </div>
+      <div class="param-group">
+        <label>Prep capacity <span class="val" id="v-prepcap">1</span></label>
+        <input type="range" id="p-prepcap" min="1" max="2" value="1" oninput="updateThroughput()">
+      </div>
+      <div class="param-group">
+        <label>Measurement capacity <span class="val" id="v-meascap">1</span></label>
+        <input type="range" id="p-meascap" min="1" max="2" value="1" oninput="updateThroughput()">
+      </div>
+      <div class="param-group">
+        <label>Prep speed mult <span class="val" id="v-pspd">1.00</span></label>
+        <input type="range" id="p-pspd" min="0.5" max="1.0" step="0.05" value="1.0" oninput="updateThroughput()">
+      </div>
+      <div class="param-group">
+        <label>Meas speed mult <span class="val" id="v-mspd">1.00</span></label>
+        <input type="range" id="p-mspd" min="0.5" max="1.0" step="0.05" value="1.0" oninput="updateThroughput()">
+      </div>
+
+      <div class="section-label">Calibration</div>
+      <div style="font-size:10px;color:#7a9aaa;margin-bottom:6px;line-height:1.5;">Enter your real play data — the model will compute its error and suggest walk time adjustments.</div>
+      <div class="param-group">
+        <label>Observed samples / cycle</label>
+        <input type="number" id="p-obs-samp" min="1" max="60" placeholder="e.g. 15"
+          style="width:100%;padding:4px 6px;font-family:inherit;font-size:12px;border:1px solid #aabbcc;background:#f8fcff;border-radius:2px;"
+          oninput="updateThroughput()">
+      </div>
+      <div class="param-group">
+        <label>Observed proposals / cycle</label>
+        <input type="number" id="p-obs-prop" min="1" max="10" placeholder="e.g. 4"
+          style="width:100%;padding:4px 6px;font-family:inherit;font-size:12px;border:1px solid #aabbcc;background:#f8fcff;border-radius:2px;"
+          oninput="updateThroughput()">
+      </div>
+      <div id="cal-feedback" style="font-size:11px;margin-top:4px;line-height:1.6;"></div>
+    </div>
+  </div>
+
+  <div class="main-col">
+    <div class="panel">
+      <div class="panel-title">Current Configuration — DES Estimate</div>
+      <div id="throughput-metrics"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Samples / Cycle — Upgrade Comparison (DES)</div>
+      <canvas id="chart-throughput" height="220"></canvas>
+      <div class="note" id="note-throughput">Each bar = median of 30 DES runs. Error bars show P10–P90 range.</div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Time Breakdown per Sample</div>
+      <canvas id="chart-pipeline" height="140"></canvas>
+    </div>
+    <div class="panel">
+      <div class="panel-title">DES Sample Distribution (current config, 60 runs)</div>
+      <canvas id="chart-des-dist" height="130"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MONTE CARLO TAB
+══════════════════════════════════════════════════════════════ -->
+<div id="tab-montecarlo" class="tab-content">
+
+  <div class="sidebar">
+    <div class="panel">
+      <div class="panel-title">Simulation Settings</div>
+
+      <div class="section-label">Run Config</div>
+      <div class="param-group">
+        <label>Number of runs <span class="val" id="v-mcr">500</span></label>
+        <input type="range" id="p-mcr" min="100" max="2000" step="100" value="500"
+          oninput="document.getElementById('v-mcr').textContent=this.value">
+      </div>
+      <div class="param-group">
+        <label>Years per run <span class="val" id="v-mcy">4</span></label>
+        <input type="range" id="p-mcy" min="1" max="8" value="4"
+          oninput="document.getElementById('v-mcy').textContent=this.value">
+      </div>
+
+      <div class="section-label">Player Behavior</div>
+      <div class="param-group">
+        <label>Mean proposals / cycle <span class="val" id="v-mcp">2</span></label>
+        <input type="range" id="p-mcp" min="0" max="5" value="2"
+          oninput="document.getElementById('v-mcp').textContent=this.value">
+      </div>
+      <div class="param-group">
+        <label>Proposal count variance <span class="val" id="v-mcv">1</span></label>
+        <input type="range" id="p-mcv" min="0" max="3" value="1"
+          oninput="document.getElementById('v-mcv').textContent=this.value">
+      </div>
+      <div class="param-group">
+        <label>Rep variance (± %) <span class="val" id="v-mcrv">20</span></label>
+        <input type="range" id="p-mcrv" min="0" max="50" step="5" value="20"
+          oninput="document.getElementById('v-mcrv').textContent=this.value">
+      </div>
+
+      <div class="section-label">Economy (mirrors Economy tab)</div>
+      <div class="param-group">
+        <label>Base grant <span class="val" id="v-mcbg">400</span></label>
+        <input type="range" id="p-mcbg" min="0" max="800" step="50" value="400"
+          oninput="document.getElementById('v-mcbg').textContent=this.value">
+      </div>
+      <div class="param-group">
+        <label>Funding multiplier <span class="val" id="v-mcfm">3</span></label>
+        <input type="range" id="p-mcfm" min="0" max="8" step="0.5" value="3"
+          oninput="document.getElementById('v-mcfm').textContent=this.value">
+      </div>
+      <div class="param-group">
+        <label>Carryover cap <span class="val" id="v-mccap">200</span></label>
+        <input type="range" id="p-mccap" min="0" max="600" step="50" value="200"
+          oninput="document.getElementById('v-mccap').textContent=this.value">
+      </div>
+
+      <button class="run-btn" onclick="runMonteCarlo()">▶  RUN SIMULATION</button>
+    </div>
+
+    <div class="panel" id="mc-stats-panel" style="display:none;">
+      <div class="panel-title">Statistics</div>
+      <div id="mc-stats"></div>
+    </div>
+  </div>
+
+  <div class="main-col">
+    <div class="panel">
+      <div class="panel-title">Rep Distribution at Final Year ⭐</div>
+      <canvas id="chart-mc-rep" height="200"></canvas>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Funding Distribution at Final Year 💰</div>
+      <canvas id="chart-mc-fund" height="200"></canvas>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Funding Bands by Year (P10 / P50 / P90)</div>
+      <canvas id="chart-mc-bands" height="200"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+// ════════════════════════════════════════════════════════════════
+//  BALANCE CALCULATOR — The Brilliant Facility
+//  Mirrors constants from BrilliantFacility.html
+// ════════════════════════════════════════════════════════════════
+
+const APPS = [
+  { name:'Mineral ID',        samples:[1,2], rep:12 },
+  { name:'Battery Electrode', samples:[2,3], rep:22 },
+  { name:'Protein Crystal',   samples:[2,4], rep:32 },
+  { name:'Archaeological',    samples:[1,3], rep:18 },
+  { name:'Semiconductor',     samples:[2,4], rep:28 },
+  { name:'Geological Core',   samples:[3,5], rep:38 },
+];
+
+const UPGRADES = [
+  { name:'Ring Maintenance',  cost:100 },
+  { name:'Faster Prep',       cost:120 },
+  { name:'Faster Meas',       cost:140 },
+  { name:'Hire Postdoc ×1',   cost:150 },
+  { name:'Prep Room ×2',      cost:180 },
+  { name:'Measurement ×2',    cost:220 },
+  { name:'Hire Postdoc ×2',   cost:300 },   // cumulative 2nd purchase
+  { name:'All Upgrades',      cost:1060 },
+];
+
+// ── Chart registry ───────────────────────────────────────────────
+const charts = {};
+function chart(id, config) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(document.getElementById(id).getContext('2d'), config);
+  return charts[id];
+}
+
+// ── Helpers ──────────────────────────────────────────────────────
+function p(id) { return parseFloat(document.getElementById('p-' + id).value); }
+function sv(id, v) { document.getElementById('v-' + id).textContent = v; }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+const CHART_FONT = { family: "'Courier New', monospace", size: 11 };
+Chart.defaults.font = CHART_FONT;
+Chart.defaults.color = '#4a6a8a';
+
+// ── Tab navigation ────────────────────────────────────────────────
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ════════════════════════════════════════════════════════════════
+//  ECONOMY TAB
+// ════════════════════════════════════════════════════════════════
+function avgRepForParams(bonus, avgSamplesPerP) {
+  let total = 0;
+  for (const a of APPS) total += a.rep + (avgSamplesPerP - 1) * bonus;
+  return total / APPS.length;
+}
+
+function simulateEconomy(params) {
+  const rows = [];
+  let rep = 0, funding = params.startFunding, ring = params.ringStart;
+  for (let year = 1; year <= params.years; year++) {
+    let yearRep = 0;
+    for (let c = 1; c <= 3; c++) {
+      const earned  = params.proposals * params.avgRep;
+      const penalty = params.fails * params.penFlat;
+      const net = earned - penalty;
+      rep = Math.max(0, rep + net);
+      yearRep += net;
+      ring = Math.max(30, ring - params.ringDecay);
+    }
+    const carryover  = Math.min(funding, params.carryoverCap);
+    const newFunding = params.baseGrant + Math.floor(rep * params.fundMult);
+    funding = carryover + newFunding;
+    rows.push({ year, rep: Math.round(rep), yearRep: Math.round(yearRep), ring: Math.round(ring), carryover, newFunding, funding });
+  }
+  return rows;
+}
+
+function updateEconomy() {
+  const years = p('years'), proposals = p('props'), spp = p('spp'), fails = p('fail');
+  const rbonus = p('rbonus'), pen = p('pen');
+  const sf = p('sf'), bg = p('bg'), fm = p('fm'), cap = p('cap');
+  const rs = p('rs'), rd = p('rd');
+
+  sv('years', years); sv('props', proposals); sv('spp', spp.toFixed(1)); sv('fail', fails);
+  sv('rbonus', rbonus); sv('pen', pen);
+  sv('sf', sf); sv('bg', bg); sv('fm', fm); sv('cap', cap);
+  sv('rs', rs); sv('rd', rd);
+
+  const avgRep = avgRepForParams(rbonus, spp);
+  const data = simulateEconomy({ years, proposals, avgRep, fails, penFlat: pen, startFunding: sf, baseGrant: bg, fundMult: fm, carryoverCap: cap, ringStart: rs, ringDecay: rd });
+
+  // Table
+  let html = `<table><thead><tr>
+    <th>Year</th><th>Rep / Year</th><th>Total Rep ⭐</th><th>Ring %</th>
+    <th>Carryover 💰</th><th>New Grant 💰</th><th>Funding Total 💰</th><th>Upgrades Affordable</th>
+  </tr></thead><tbody>`;
+  for (const r of data) {
+    const ringCls = r.ring > 60 ? 'ring-good' : r.ring > 30 ? 'ring-ok' : 'ring-bad';
+    const affordable = UPGRADES.filter(u => u.cost <= r.funding).map(u => u.name).join(' · ') || '—';
+    html += `<tr>
+      <td><strong>Year ${r.year}</strong></td>
+      <td class="num rep">+${r.yearRep}</td>
+      <td class="num rep">⭐ ${r.rep}</td>
+      <td class="num ${ringCls}">${r.ring}%</td>
+      <td class="num fund">💰 ${r.carryover}</td>
+      <td class="num fund">💰 ${r.newFunding}</td>
+      <td class="num fund"><strong>💰 ${r.funding}</strong></td>
+      <td style="font-size:11px;color:#2a5a3a">${affordable}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  document.getElementById('econ-table').innerHTML = html;
+
+  // Insights
+  const insightLines = [];
+  const firstAffordable = {};
+  for (const r of data) {
+    for (const u of UPGRADES) {
+      if (!firstAffordable[u.name] && r.funding >= u.cost)
+        firstAffordable[u.name] = r.year;
+    }
+  }
+  const lastData = data[data.length - 1];
+  if (firstAffordable['Ring Maintenance'])
+    insightLines.push(`Ring Maintenance (💰100) first affordable Year ${firstAffordable['Ring Maintenance']}`);
+  if (firstAffordable['Hire Postdoc ×1'])
+    insightLines.push(`First Postdoc slot (💰150) first affordable Year ${firstAffordable['Hire Postdoc ×1']}`);
+  if (firstAffordable['All Upgrades'])
+    insightLines.push(`Full upgrade set (💰1060) reachable by Year ${firstAffordable['All Upgrades']}`);
+  else
+    insightLines.push(`Full upgrade set (💰1060) NOT reachable within ${years} years`);
+
+  const repPerYear = data.length ? Math.round(data.reduce((s,r)=>s+r.yearRep,0)/data.length) : 0;
+  insightLines.push(`Average rep / year: ~${repPerYear} ⭐`);
+  if (lastData.ring <= 30) insightLines.push(`Ring hits minimum floor (30%) by Year ${data.find(r=>r.ring<=30)?.year}`);
+  if (proposals === 0) insightLines.push(`With 0 proposals / cycle, only penalties accrue — rep will drop`);
+
+  const fundGrowthRate = data.length >= 2 ? data[data.length-1].funding - data[0].funding : 0;
+  if (fundGrowthRate > 0) insightLines.push(`Funding grows ~💰${Math.round(fundGrowthRate / (data.length-1 || 1))} / year`);
+
+  document.getElementById('insights-text').innerHTML =
+    insightLines.map(l => `<p>${l}</p>`).join('');
+
+  // Rep chart
+  chart('chart-rep', {
+    type: 'line',
+    data: {
+      labels: data.map(r => `Y${r.year}`),
+      datasets: [{
+        label: 'Cumulative Rep',
+        data: data.map(r => r.rep),
+        borderColor: '#b38600', backgroundColor: 'rgba(179,134,0,0.08)',
+        tension: 0.3, fill: true, pointRadius: 5,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true }, x: {} }
+    }
+  });
+
+  // Funding chart with upgrade cost reference lines
+  const fundAnnotations = UPGRADES.slice(0, 5).map((u, i) => ({
+    type: 'line', yMin: u.cost, yMax: u.cost, borderColor: `hsl(${200 + i*25},60%,50%)`,
+    borderWidth: 1, borderDash: [4, 4],
+    label: { content: u.name, enabled: false },
+  }));
+
+  chart('chart-fund', {
+    type: 'bar',
+    data: {
+      labels: data.map(r => `Y${r.year}`),
+      datasets: [
+        {
+          label: 'New Grant',
+          data: data.map(r => r.newFunding),
+          backgroundColor: 'rgba(26,106,58,0.7)',
+          stack: 'fund',
+        },
+        {
+          label: 'Carryover',
+          data: data.map(r => r.carryover),
+          backgroundColor: 'rgba(26,106,58,0.25)',
+          stack: 'fund',
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8 } } },
+      scales: { y: { beginAtZero: true, stacked: true }, x: { stacked: true } }
+    }
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  PROPOSALS TAB
+// ════════════════════════════════════════════════════════════════
+function updateProposals() {
+  const bonus  = p('prbonus');
+  const pmult  = p('prmult');
+  const papplied = p('prapplied');
+  sv('prbonus', bonus);
+  sv('prmult', pmult.toFixed(2));
+  sv('prapplied', papplied);
+
+  const rows = [];
+  let html = '';
+  for (const app of APPS) {
+    const [lo, hi] = app.samples;
+    const avgS = (lo + hi) / 2;
+    const minRep = app.rep + (lo - 1) * bonus - 3;
+    const avgRep = app.rep + (avgS - 1) * bonus;
+    const maxRep = app.rep + (hi - 1) * bonus + 3;
+    const shownPen = Math.round(avgRep * pmult);
+    const rps = (avgRep / avgS).toFixed(1);
+    rows.push({ name: app.name, lo, hi, avgS, minRep, avgRep, maxRep, shownPen });
+    html += `<tr>
+      <td><strong>${app.name}</strong></td>
+      <td style="text-align:center">${lo}–${hi}</td>
+      <td class="num">${app.rep}</td>
+      <td class="num rep">${minRep}</td>
+      <td class="num rep"><strong>${avgRep.toFixed(1)}</strong></td>
+      <td class="num rep">${maxRep}</td>
+      <td class="num badge-warn" style="color:#cc3300">−${shownPen}</td>
+      <td class="num" style="color:#aa4400">−${papplied}</td>
+      <td class="num" style="color:#2a6a8a">${rps}</td>
+    </tr>`;
+  }
+  document.getElementById('proposals-tbody').innerHTML = html;
+
+  const globalAvg = rows.reduce((s, r) => s + r.avgRep, 0) / rows.length;
+  const maxAvg    = Math.max(...rows.map(r => r.avgRep));
+  const minAvg    = Math.min(...rows.map(r => r.avgRep));
+  const ratio     = (maxAvg / minAvg).toFixed(1);
+  document.getElementById('proposals-note').textContent =
+    `Global avg: ${globalAvg.toFixed(1)} rep  ·  Highest: ${maxAvg.toFixed(1)}  ·  Lowest: ${minAvg.toFixed(1)}  ·  Max/Min ratio: ${ratio}×`;
+
+  // Foot row
+  document.getElementById('proposals-tfoot').innerHTML = `<tr style="background:#f4f8ff">
+    <td colspan="4" style="font-style:italic;color:#6a8a9a">Global average</td>
+    <td class="num rep"><strong>${globalAvg.toFixed(1)}</strong></td>
+    <td colspan="4"></td>
+  </tr>`;
+
+  // Horizontal bar chart
+  chart('chart-proposals', {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r.name.split(' ').slice(-1)[0]),
+      datasets: [
+        {
+          label: 'Min',
+          data: rows.map(r => r.minRep),
+          backgroundColor: 'rgba(179,134,0,0.25)',
+          borderColor: '#c8a030', borderWidth: 1,
+        },
+        {
+          label: 'Avg',
+          data: rows.map(r => r.avgRep - r.minRep),
+          backgroundColor: 'rgba(179,134,0,0.7)',
+          borderColor: '#b38600', borderWidth: 1,
+        },
+        {
+          label: 'Max range',
+          data: rows.map(r => r.maxRep - r.avgRep),
+          backgroundColor: 'rgba(179,134,0,0.35)',
+          borderColor: '#c8a030', borderWidth: 1,
+        }
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 6 } } },
+      scales: { x: { stacked: true, beginAtZero: true }, y: { stacked: true } }
+    }
+  });
+
+  // Main bar chart (avg rep by app)
+  chart('chart-prop-bar', {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r.name),
+      datasets: [{
+        label: 'Avg Rep',
+        data: rows.map(r => r.avgRep),
+        backgroundColor: rows.map((_, i) => `hsla(${40 + i*15},75%,50%,0.7)`),
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  DISCRETE EVENT SIMULATION (DES)
+//  Models the full player pipeline at a per-event level.
+//  Sample stages: raw → held_raw → prepping → prepped →
+//                 held_prepped → exp_done → measuring → measdone →
+//                 held_done → complete
+// ════════════════════════════════════════════════════════════════
+function runDES(cfg) {
+  const {
+    cdur, wt, pt, et, mt,
+    prepCap, measCap,          // per-unit capacities
+    slots, queuedSlots = 2,    // active + queued proposals
+    avgSamples = 2.5, sampVar = 1.5, maxHeld = 3,
+  } = cfg;
+
+  // 2 prep tables × prepCap slots each; 4 beamlines × measCap slots each
+  const totalPrep = prepCap * 2;
+  const totalMeas = measCap * 4;
+
+  // Generate proposals (active + a few queued)
+  const props = Array.from({ length: slots + queuedSlots }, (_, i) => ({
+    id: i,
+    total: Math.max(1, Math.round(avgSamples + (Math.random() - 0.5) * 2 * sampVar)),
+    done: 0,
+    active: i < slots,
+  }));
+
+  const samp = [];
+  const addS = prop => {
+    for (let i = 0; i < prop.total; i++)
+      samp.push({ id: samp.length, pid: prop.id, stage: 'raw', avail: 0 });
+  };
+  props.filter(p => p.active).forEach(addS);
+
+  const prepFree = Array(totalPrep).fill(0);   // freeAt times
+  const measFree = Array(totalMeas).fill(0);
+
+  let pFree = 0, t = 0, held = [], nSamp = 0, nProp = 0;
+
+  const atStage = st => samp.filter(s => s.stage === st && s.avail <= t && !held.includes(s));
+  const hAt     = st => held.filter(s => s.stage === st);
+  const freeIdx = arr => arr.findIndex(fa => fa <= t);
+
+  for (let iter = 0; iter < 12000; iter++) {
+    // Advance time to next meaningful event when player is busy
+    if (t < pFree) {
+      const pending = samp
+        .filter(s => (s.stage === 'prepping' || s.stage === 'measuring') && s.avail > t)
+        .map(s => s.avail);
+      t = Math.min(pFree, ...pending, cdur);
+      if (t >= cdur) break;
+    }
+
+    // Auto-complete stations that have finished
+    samp.forEach(s => {
+      if (s.stage === 'prepping'  && s.avail <= t) s.stage = 'prepped';
+      if (s.stage === 'measuring' && s.avail <= t) s.stage = 'measdone';
+    });
+
+    // P1: deliver held_done → complete (instant bookkeeping)
+    const done = hAt('held_done');
+    if (done.length) {
+      done.forEach(s => {
+        s.stage = 'complete';
+        held.splice(held.indexOf(s), 1);
+        nSamp++;
+        const prop = props.find(p => p.id === s.pid);
+        if (prop) {
+          prop.done++;
+          if (prop.done >= prop.total) {
+            nProp++;
+            const queued = props.find(p => !p.active);
+            if (queued) { queued.active = true; addS(queued); }
+          }
+        }
+      });
+      continue; // no time cost
+    }
+
+    // P2: pick up completed measurements from console
+    const md = atStage('measdone');
+    if (md.length && held.length < maxHeld) {
+      md.slice(0, maxHeld - held.length).forEach(s => { s.stage = 'held_done'; held.push(s); });
+      pFree = t + wt;
+      continue;
+    }
+
+    // P3: deposit exp_done sample at measurement console
+    const ed = hAt('exp_done');
+    if (ed.length) {
+      const si = freeIdx(measFree);
+      if (si >= 0) {
+        const s = ed[0];
+        s.stage = 'measuring';
+        s.avail = t + wt + mt;
+        measFree[si] = s.avail;
+        held.splice(held.indexOf(s), 1);
+        pFree = t + wt;
+        continue;
+      }
+      // All meas slots busy — fall through to other work
+    }
+
+    // P4: do experiment setup on held prepped sample
+    const hp = hAt('held_prepped');
+    if (hp.length) {
+      hp[0].stage = 'exp_done';
+      pFree = t + wt + et;
+      continue;
+    }
+
+    // P5: pick up prepped sample from prep table
+    const pp = atStage('prepped');
+    if (pp.length && held.length < maxHeld) {
+      pp.slice(0, maxHeld - held.length).forEach(s => { s.stage = 'held_prepped'; held.push(s); });
+      pFree = t + wt;
+      continue;
+    }
+
+    // P6: pick up raw sample from NPC
+    const rw = atStage('raw');
+    if (rw.length && held.length < maxHeld) {
+      rw.slice(0, maxHeld - held.length).forEach(s => { s.stage = 'held_raw'; held.push(s); });
+      pFree = t + wt;
+      continue;
+    }
+
+    // P7: deposit held raw sample to prep table
+    const hr = hAt('held_raw');
+    if (hr.length) {
+      const si = freeIdx(prepFree);
+      if (si >= 0) {
+        const s = hr[0];
+        s.stage = 'prepping';
+        s.avail = t + wt + pt;
+        prepFree[si] = s.avail;
+        held.splice(held.indexOf(s), 1);
+        pFree = t + wt;
+        continue;
+      }
+    }
+
+    // P8: nothing to do — wait for next station event
+    const pending = samp.filter(s => s.stage === 'prepping' || s.stage === 'measuring');
+    const noWork  = !atStage('raw').length && !held.length && !pending.length;
+    if (noWork) break;
+    const nexts = [...pending.map(s => s.avail), ...prepFree.filter(f => f > t), ...measFree.filter(f => f > t)];
+    t = nexts.length ? Math.min(cdur, ...nexts) : cdur;
+    if (t >= cdur) break;
+  }
+
+  return {
+    samples:  nSamp,
+    proposals: nProp,
+    partial:  props.filter(p => p.active && p.done > 0 && p.done < p.total).length,
+  };
+}
+
+function runDESBatch(cfg, runs = 40) {
+  const results  = Array.from({ length: runs }, () => runDES(cfg));
+  const sArr     = results.map(r => r.samples).sort((a, b) => a - b);
+  const pArr     = results.map(r => r.proposals).sort((a, b) => a - b);
+  const avg      = arr => arr.reduce((s, v) => s + v, 0) / arr.length;
+  const pct      = (arr, q) => arr[Math.floor(arr.length * q)];
+  return {
+    samples:   { min: sArr[0], p10: pct(sArr,.1), med: pct(sArr,.5), p90: pct(sArr,.9), max: sArr[sArr.length-1], avg: avg(sArr) },
+    proposals: { min: pArr[0], p10: pct(pArr,.1), med: pct(pArr,.5), p90: pct(pArr,.9), max: pArr[pArr.length-1], avg: avg(pArr) },
+    raw: sArr,
+  };
+}
+
+// ════════════════════════════════════════════════════════════════
+//  THROUGHPUT TAB
+// ════════════════════════════════════════════════════════════════
+function calcThroughput(cfg) {
+  // Simple bottleneck formula (fast, used as a sanity check)
+  const effPrep = cfg.pt * cfg.pspd;
+  const effMeas = cfg.mt * cfg.mspd;
+  const playerTime = 4 * cfg.wt + cfg.et;
+  const bt = Math.max(playerTime / Math.min(cfg.slots, 3), effPrep / (cfg.prepCap * 2), effMeas / (cfg.measCap * 4));
+  return { effPrep, effMeas, playerTime, bt, samples: Math.floor(cfg.cdur / bt * 0.85) };
+}
+
+function updateThroughput() {
+  const cdur = p('cdur'), pt = p('pt'), et = p('et'), mt = p('mt'), wt = p('wt');
+  const slots = p('slots'), prepCap = p('prepcap'), measCap = p('meascap');
+  const pspd = p('pspd'), mspd = p('mspd');
+
+  sv('cdur', cdur); sv('pt', pt.toFixed(1)); sv('et', et.toFixed(1));
+  sv('mt', mt.toFixed(1)); sv('wt', wt.toFixed(1));
+  sv('slots', slots); sv('prepcap', prepCap); sv('meascap', measCap);
+  sv('pspd', pspd.toFixed(2)); sv('mspd', mspd.toFixed(2));
+
+  const baseCfg = { cdur, pt: pt*pspd, et, mt: mt*mspd, wt, prepCap, measCap, slots };
+
+  // DES estimate (60 runs for current config)
+  const des = runDESBatch(baseCfg, 60);
+
+  // Calibration feedback
+  const obsSamp = parseFloat(document.getElementById('p-obs-samp').value);
+  const obsProp = parseFloat(document.getElementById('p-obs-prop').value);
+  const calEl   = document.getElementById('cal-feedback');
+  if (!isNaN(obsSamp) && obsSamp > 0) {
+    const modelErr  = ((des.samples.avg - obsSamp) / obsSamp * 100).toFixed(0);
+    const direction = des.samples.avg > obsSamp ? 'high' : 'low';
+    const suggestWt = (wt * obsSamp / des.samples.avg).toFixed(1);
+    calEl.innerHTML = `
+      <div style="padding:6px 8px;background:#f0f6ff;border:1px solid #8ab4d8;border-radius:2px;">
+        DES avg: <strong>${des.samples.avg.toFixed(1)}</strong> vs observed: <strong>${obsSamp}</strong><br>
+        Model is <strong style="color:${Math.abs(modelErr)>20?'#cc3300':'#1a6a3a'}">${Math.abs(modelErr)}% ${direction}</strong>
+        ${Math.abs(modelErr) > 10 ? `<br>Try walk time ≈ <strong>${suggestWt}s</strong> to match` : ' — good fit!'}
+        ${!isNaN(obsProp) ? `<br>Proposals: DES ${des.proposals.avg.toFixed(1)} vs observed ${obsProp}` : ''}
+      </div>`;
+  } else {
+    calEl.innerHTML = '';
+  }
+
+  // Metrics panel
+  const effSampPerCycle = des.samples.med;
+  document.getElementById('throughput-metrics').innerHTML = `
+    <div class="metric-row">
+      <div class="metric-card">
+        <div class="metric-label">DES median samples / cycle</div>
+        <div class="metric-value ${effSampPerCycle >= 12 ? 'green' : ''}">${des.samples.med}</div>
+        <div class="metric-sub">P10–P90: ${des.samples.p10}–${des.samples.p90}  ·  avg ${des.samples.avg.toFixed(1)}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">DES median proposals / cycle</div>
+        <div class="metric-value">${des.proposals.med}</div>
+        <div class="metric-sub">P10–P90: ${des.proposals.p10}–${des.proposals.p90}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Effective time / sample</div>
+        <div class="metric-value">${des.samples.avg > 0 ? (cdur / des.samples.avg).toFixed(1) : '—'}s</div>
+        <div class="metric-sub">= cycle ÷ avg samples</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Samples / year (3 cycles)</div>
+        <div class="metric-value">${des.samples.med * 3}</div>
+        <div class="metric-sub">at median performance</div>
+      </div>
+    </div>
+  `;
+
+  // Comparison chart using DES for each preset (30 runs each)
+  const presets = [
+    { label: 'Base',         slots:3, prepCap:1, measCap:1, pspd:1.0, mspd:1.0 },
+    { label: '+Speed',       slots:3, prepCap:1, measCap:1, pspd:0.7, mspd:0.7 },
+    { label: '+Capacity',    slots:3, prepCap:2, measCap:2, pspd:1.0, mspd:1.0 },
+    { label: '+1 Slot',      slots:4, prepCap:1, measCap:1, pspd:1.0, mspd:1.0 },
+    { label: '+2 Slots',     slots:5, prepCap:1, measCap:1, pspd:1.0, mspd:1.0 },
+    { label: 'All Upgrades', slots:5, prepCap:2, measCap:2, pspd:0.7, mspd:0.7 },
+    { label: 'Custom ▸',     slots, prepCap, measCap, pspd, mspd },
+  ];
+  const presetDES = presets.map(c =>
+    runDESBatch({ cdur, pt: pt*c.pspd, et, mt: mt*c.mspd, wt, prepCap: c.prepCap, measCap: c.measCap, slots: c.slots }, 30)
+  );
+
+  chart('chart-throughput', {
+    type: 'bar',
+    data: {
+      labels: presets.map(c => c.label),
+      datasets: [
+        {
+          label: 'P10',
+          data: presetDES.map(r => r.samples.p10),
+          backgroundColor: presets.map((_, i) => i === presets.length-1 ? 'rgba(0,60,180,0.25)' : 'rgba(26,106,170,0.2)'),
+          stack: 'band',
+          borderWidth: 0,
+        },
+        {
+          label: 'Median',
+          data: presetDES.map(r => r.samples.med - r.samples.p10),
+          backgroundColor: presets.map((_, i) => i === presets.length-1 ? 'rgba(0,80,200,0.8)' : 'rgba(26,106,170,0.7)'),
+          stack: 'band',
+          borderWidth: 1,
+          borderColor: presets.map((_, i) => i === presets.length-1 ? '#0040aa' : '#1a6aaa'),
+        },
+        {
+          label: 'P90',
+          data: presetDES.map(r => r.samples.p90 - r.samples.med),
+          backgroundColor: presets.map((_, i) => i === presets.length-1 ? 'rgba(0,60,180,0.25)' : 'rgba(26,106,170,0.2)'),
+          stack: 'band',
+          borderWidth: 0,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 6 } } },
+      scales: { y: { beginAtZero: true, stacked: true, title: { display: true, text: 'samples / cycle' } }, x: { stacked: true } }
+    }
+  });
+
+  // Pipeline time breakdown
+  const effPrep = pt * pspd, effMeas = mt * mspd;
+  chart('chart-pipeline', {
+    type: 'bar',
+    data: {
+      labels: ['Player active time per sample'],
+      datasets: [
+        { label: `Walk ×4 (${(4*wt).toFixed(1)}s)`,   data: [4*wt],    backgroundColor: 'rgba(100,160,220,0.7)' },
+        { label: `Exp setup (${et.toFixed(1)}s)`,       data: [et],      backgroundColor: 'rgba(200,100,50,0.7)'  },
+        { label: `Prep wait (${effPrep.toFixed(1)}s)`,  data: [effPrep], backgroundColor: 'rgba(50,180,100,0.4)'  },
+        { label: `Meas wait (${effMeas.toFixed(1)}s)`,  data: [effMeas], backgroundColor: 'rgba(50,180,180,0.4)'  },
+      ]
+    },
+    options: {
+      indexAxis: 'y', responsive: true,
+      plugins: { legend: { position: 'right', labels: { boxWidth: 10, padding: 6 } } },
+      scales: { x: { stacked: true, title: { display: true, text: 'seconds (prep & meas run in parallel with player)' } }, y: { stacked: true } }
+    }
+  });
+
+  // DES distribution histogram
+  const sArr = des.raw;
+  const binCount = Math.min(15, sArr[sArr.length-1] - sArr[0] + 1 || 1);
+  const lo = sArr[0], hi = sArr[sArr.length-1];
+  const bw = Math.max(1, Math.ceil((hi - lo + 1) / binCount));
+  const bins = Array.from({ length: Math.ceil((hi - lo + 1) / bw) }, (_, i) => ({ x: lo + i*bw, n: 0 }));
+  sArr.forEach(v => { const bi = Math.min(bins.length-1, Math.floor((v - lo) / bw)); bins[bi].n++; });
+
+  chart('chart-des-dist', {
+    type: 'bar',
+    data: {
+      labels: bins.map(b => b.x),
+      datasets: [{
+        label: 'Runs',
+        data: bins.map(b => b.n),
+        backgroundColor: 'rgba(26,106,170,0.6)',
+        borderColor: '#1a6aaa', borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { title: { display: true, text: 'samples completed' } },
+        y: { title: { display: true, text: 'runs' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  MONTE CARLO TAB
+// ════════════════════════════════════════════════════════════════
+function runMonteCarlo() {
+  const runs     = parseInt(document.getElementById('p-mcr').value);
+  const years    = parseInt(document.getElementById('p-mcy').value);
+  const meanP    = parseInt(document.getElementById('p-mcp').value);
+  const variance = parseInt(document.getElementById('p-mcv').value);
+  const repVar   = parseFloat(document.getElementById('p-mcrv').value) / 100;
+  const baseGrant   = parseFloat(document.getElementById('p-mcbg').value);
+  const fundMult    = parseFloat(document.getElementById('p-mcfm').value);
+  const carryoverCap = parseFloat(document.getElementById('p-mccap').value);
+
+  // Use proposal stats from global APPS with bonus from proposals tab
+  const bonus = p('prbonus') || 8;
+  const spp   = p('spp') || 2.5;
+  const avgRepBase = avgRepForParams(bonus, spp);
+
+  const finalReps  = [];
+  const finalFunds = [];
+  const yearlyFunds = Array.from({ length: years }, () => []);
+
+  for (let run = 0; run < runs; run++) {
+    let rep = 0, funding = p('sf') || 400;
+    for (let year = 1; year <= years; year++) {
+      for (let c = 0; c < 3; c++) {
+        const actualP = Math.max(0, meanP + Math.round((Math.random() * 2 - 1) * variance));
+        const repScale = 1 - repVar + Math.random() * 2 * repVar;
+        rep = Math.max(0, rep + actualP * avgRepBase * repScale);
+      }
+      const carryover   = Math.min(funding, carryoverCap);
+      const newFunding  = baseGrant + Math.floor(rep * fundMult);
+      funding = carryover + newFunding;
+      yearlyFunds[year - 1].push(funding);
+    }
+    finalReps.push(Math.round(rep));
+    finalFunds.push(Math.round(funding));
+  }
+
+  // Sort for percentiles
+  finalReps.sort((a, b) => a - b);
+  finalFunds.sort((a, b) => a - b);
+  yearlyFunds.forEach(arr => arr.sort((a, b) => a - b));
+
+  const pct = (arr, q) => arr[Math.floor(arr.length * q)];
+  const avg = arr => Math.round(arr.reduce((s, v) => s + v, 0) / arr.length);
+
+  // Stats panel
+  document.getElementById('mc-stats-panel').style.display = '';
+  document.getElementById('mc-stats').innerHTML = `
+    <div style="margin-bottom:6px;font-size:10px;letter-spacing:1px;color:#7a9aaa;">REPUTATION (YEAR ${years})</div>
+    <div>P10: <strong class="rep">⭐ ${pct(finalReps, 0.1)}</strong></div>
+    <div>P50: <strong class="rep">⭐ ${pct(finalReps, 0.5)}</strong></div>
+    <div>P90: <strong class="rep">⭐ ${pct(finalReps, 0.9)}</strong></div>
+    <div>Avg: <strong class="rep">⭐ ${avg(finalReps)}</strong></div>
+    <div style="margin-top:10px;margin-bottom:6px;font-size:10px;letter-spacing:1px;color:#7a9aaa;">FUNDING (YEAR ${years})</div>
+    <div>P10: <strong class="fund">💰 ${pct(finalFunds, 0.1)}</strong></div>
+    <div>P50: <strong class="fund">💰 ${pct(finalFunds, 0.5)}</strong></div>
+    <div>P90: <strong class="fund">💰 ${pct(finalFunds, 0.9)}</strong></div>
+    <div>Avg: <strong class="fund">💰 ${avg(finalFunds)}</strong></div>
+    <div style="margin-top:10px;font-size:10px;color:#8a9aaa;">${runs.toLocaleString()} runs · ${years} years each</div>
+  `;
+
+  // Histogram helper
+  function histogram(data, bins) {
+    const lo = data[0], hi = data[data.length - 1];
+    const bw = (hi - lo) / bins || 1;
+    const counts = new Array(bins).fill(0);
+    const labels = Array.from({ length: bins }, (_, i) => Math.round(lo + i * bw));
+    for (const v of data) counts[clamp(Math.floor((v - lo) / bw), 0, bins - 1)]++;
+    return { labels, counts };
+  }
+
+  const repH  = histogram(finalReps, 20);
+  const fundH = histogram(finalFunds, 20);
+
+  chart('chart-mc-rep', {
+    type: 'bar',
+    data: {
+      labels: repH.labels,
+      datasets: [{
+        label: 'Runs',
+        data: repH.counts,
+        backgroundColor: 'rgba(179,134,0,0.65)',
+        borderColor: '#b38600', borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { x: { title: { display: true, text: 'rep (⭐)' } }, y: { title: { display: true, text: 'runs' } } }
+    }
+  });
+
+  chart('chart-mc-fund', {
+    type: 'bar',
+    data: {
+      labels: fundH.labels,
+      datasets: [{
+        label: 'Runs',
+        data: fundH.counts,
+        backgroundColor: 'rgba(26,106,58,0.65)',
+        borderColor: '#1a6a3a', borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { x: { title: { display: true, text: 'funding (💰)' } }, y: { title: { display: true, text: 'runs' } } }
+    }
+  });
+
+  // Bands chart: P10/P50/P90 by year
+  const yearLabels = Array.from({ length: years }, (_, i) => `Y${i + 1}`);
+  chart('chart-mc-bands', {
+    type: 'line',
+    data: {
+      labels: yearLabels,
+      datasets: [
+        {
+          label: 'P90',
+          data: yearlyFunds.map(arr => pct(arr, 0.9)),
+          borderColor: '#1a6a3a', backgroundColor: 'rgba(26,106,58,0.08)',
+          tension: 0.3, fill: '+1',
+        },
+        {
+          label: 'P50 (median)',
+          data: yearlyFunds.map(arr => pct(arr, 0.5)),
+          borderColor: '#0d3a8a', backgroundColor: 'rgba(13,58,138,0.08)',
+          tension: 0.3, borderWidth: 2.5, fill: '+1',
+        },
+        {
+          label: 'P10',
+          data: yearlyFunds.map(arr => pct(arr, 0.1)),
+          borderColor: '#aa5500', backgroundColor: 'rgba(170,85,0,0.05)',
+          tension: 0.3, fill: false,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8 } } },
+      scales: {
+        y: { beginAtZero: true, title: { display: true, text: 'funding (💰)' } }
+      }
+    }
+  });
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+updateEconomy();
+updateProposals();
+updateThroughput();
+</script>
+</body>
+</html>

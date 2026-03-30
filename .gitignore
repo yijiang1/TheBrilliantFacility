@@ -1,0 +1,12 @@
+.DS_Store
+.obsidian/
+
+# Old GDD versions (superseded by GDD/ markdown files)
+TheBrilliantFacility_GDD_v0.4.docx
+TheBrilliantFacility_GDD_v0.5.docx
+
+# Economy model (binary, doesn't diff well)
+BrilliantFacility_EconomyModel.xlsx
+
+# Dev tools
+GameManager.html
