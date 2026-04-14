@@ -3072,7 +3072,7 @@ function clearSave() {
 function sendTelemetry(record) {
   if (!TELEMETRY_WEBHOOK) return;
   const upg = Object.keys(record.upgrades || {}).join(', ') || 'none';
-  const body = JSON.stringify({
+  const embed = JSON.stringify({
     username: 'TBF Stats',
     embeds: [{
       title: `Y${record.year} C${record.cycleInYear} — ${record.samples} samples`,
@@ -3089,8 +3089,17 @@ function sendTelemetry(record) {
       footer: { text: record.ts },
     }],
   });
-  fetch(TELEMETRY_WEBHOOK, { method:'POST', headers:{'Content-Type':'application/json'}, body })
-    .catch(() => {});  // silent — never disrupt gameplay
+
+  // Send embed card
+  fetch(TELEMETRY_WEBHOOK, { method:'POST', headers:{'Content-Type':'application/json'}, body: embed })
+    .catch(() => {});
+
+  // Send raw JSON as a downloadable file attachment
+  const filename = `tbf_Y${record.year}C${record.cycleInYear}_${record.ts.slice(0,19).replace(/:/g,'-')}.json`;
+  const form = new FormData();
+  form.append('file', new Blob([JSON.stringify(record, null, 2)], {type:'application/json'}), filename);
+  fetch(TELEMETRY_WEBHOOK, { method:'POST', body: form })
+    .catch(() => {});
 }
 
 // ── Dev stats (localStorage) ──────────────────────────────────
