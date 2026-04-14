@@ -13,7 +13,8 @@
   #game-container {
     visibility:hidden;
     position:fixed;
-    inset:0;
+    width: 100vw;
+    height: 100vh;
   }
   #game-container canvas { display:block; }
   #info-bar { display:none; }
@@ -41,12 +42,13 @@
 //    6. Walk to Control Room → [Space] pick up result → sample complete!
 // ════════════════════════════════════════════════════════════════
 
-const GW = 960, GH = 600;
+let GW = Math.max(960, window.innerWidth);
+let GH = Math.max(600, window.innerHeight);
 const DPR = Math.min(window.devicePixelRatio || 1, 3);
 const CYCLE_SEC     = 180;   // 3 min real time = 90 days game time
 const DAYS_PER_CYCLE = 90;
-const MAX_ACTIVE         = 3;   // base simultaneous job slots
-const MAX_SLOTS          = 5;   // max slots ever (base + all extraJobSlots upgrades)
+const MAX_ACTIVE         = 5;   // base simultaneous job slots
+const MAX_SLOTS          = 5;   // max slots rendered in UI
 const PROPOSAL_LIFE = 40;
 const MAX_HELD      = 3;   // player inventory size
 
@@ -67,8 +69,12 @@ const C = {
 };
 
 // Job slot colours
-const JOB_HEX = [0x1a6aaa, 0xaa4a10, 0x2a9a5a, 0x8a2a9a, 0x8a6a10];  // up to 5 slots
-const JOB_TXT = ['#1a5a9a','#9a3a08','#1a8a4a','#6a1a8a','#7a5a08'];  // up to 5 slots
+const JOB_HEX = [0x1a6aaa, 0xaa4a10, 0x2a9a5a, 0x8a2a9a, 0x8a6a10, 0x1a8a8a, 0x8a1a3a, 0x4a4a4a];  // up to 8 slots
+const JOB_TXT = ['#1a5a9a','#9a3a08','#1a8a4a','#6a1a8a','#7a5a08', '#1a6a6a', '#6a1a2a', '#3a3a3a'];  // up to 8 slots
+
+// Beamline colours — fixed per BL slot index (BL-1..4), independent of which job is running
+const BL_HEX = [0x0077dd, 0xcc4400, 0x009944, 0x8800cc];  // BL-1 blue, BL-2 orange, BL-3 teal, BL-4 purple
+const BL_TXT = ['#0066cc', '#bb3300', '#007733', '#7700bb'];
 
 // ── Generation data ─────────────────────────────────────────────────────────
 // Each generation adds new techniques and application types.
@@ -89,10 +95,10 @@ const GENERATION_DATA = [
       'X-ray Topography',     // XRT  — crystal defect & strain field imaging
     ],
     apps: [
-      {name:'Mineral ID',        samples:[1,2], rep:12},
-      {name:'Steel Alloy',       samples:[1,2], rep:15},
-      {name:'Crystal Structure', samples:[1,3], rep:18},
-      {name:'Pigment Analysis',  samples:[1,2], rep:10},
+      {name:'Mineral ID',        samples:[1,2], rep:12, lab:'dry'},
+      {name:'Steel Alloy',       samples:[1,2], rep:15, lab:'dry'},
+      {name:'Crystal Structure', samples:[1,3], rep:18, lab:'dry'},
+      {name:'Pigment Analysis',  samples:[1,2], rep:10, lab:'dry'},
     ],
   },
   {
@@ -108,11 +114,11 @@ const GENERATION_DATA = [
       'Protein Crystallography', // MX  — macromolecular structure determination
     ],
     apps: [
-      {name:'Catalyst Study',        samples:[2,3], rep:22},
-      {name:'Protein Fragment',      samples:[2,3], rep:26},
-      {name:'Environmental Sample',  samples:[1,3], rep:16},
-      {name:'Pharmaceutical',        samples:[2,4], rep:28},
-      {name:'Battery Electrode',     samples:[2,3], rep:22},
+      {name:'Catalyst Study',        samples:[2,3], rep:22, lab:'dry'},
+      {name:'Protein Fragment',      samples:[2,3], rep:26, lab:'wet'},
+      {name:'Environmental Sample',  samples:[1,3], rep:16, lab:'wet'},
+      {name:'Pharmaceutical',        samples:[2,4], rep:28, lab:'wet'},
+      {name:'Battery Electrode',     samples:[2,3], rep:22, lab:'dry'},
     ],
   },
   {
@@ -128,11 +134,11 @@ const GENERATION_DATA = [
       'XRD Analysis',   // XRD  — high-resolution strain, texture & phase mapping
     ],
     apps: [
-      {name:'Drug Target',     samples:[2,4], rep:32},
-      {name:'Geological Core', samples:[3,5], rep:38},
-      {name:'Archaeological',  samples:[1,3], rep:22},
-      {name:'Semiconductor',   samples:[2,4], rep:30},
-      {name:'Nanocomposite',   samples:[2,4], rep:34},
+      {name:'Drug Target',     samples:[2,4], rep:32, lab:'wet'},
+      {name:'Geological Core', samples:[3,5], rep:38, lab:'dry'},
+      {name:'Archaeological',  samples:[1,3], rep:22, lab:'dry'},
+      {name:'Semiconductor',   samples:[2,4], rep:30, lab:'dry'},
+      {name:'Nanocomposite',   samples:[2,4], rep:34, lab:'dry'},
     ],
   },
   {
@@ -150,12 +156,12 @@ const GENERATION_DATA = [
       'Coherent Imaging',       // CDI    — lens-free imaging using fully coherent X-rays
     ],
     apps: [
-      {name:'Virus Particle',     samples:[3,5], rep:50},
-      {name:'Quantum Material',   samples:[2,4], rep:46},
-      {name:'Operando Battery',   samples:[2,4], rep:42},
-      {name:'Neural Tissue',      samples:[3,5], rep:48},
-      {name:'Ultrafast Dynamics', samples:[2,3], rep:55},
-      {name:'Nano-device',        samples:[2,4], rep:44},
+      {name:'Virus Particle',     samples:[3,5], rep:50, lab:'wet'},
+      {name:'Quantum Material',   samples:[2,4], rep:46, lab:'dry'},
+      {name:'Operando Battery',   samples:[2,4], rep:42, lab:'dry'},
+      {name:'Neural Tissue',      samples:[3,5], rep:48, lab:'wet'},
+      {name:'Ultrafast Dynamics', samples:[2,3], rep:55, lab:'dry'},
+      {name:'Nano-device',        samples:[2,4], rep:44, lab:'dry'},
     ],
   },
 ];
@@ -284,9 +290,10 @@ class TutorialScene extends Phaser.Scene {
 
   _bg()           { this._o(this.add.rectangle(GW/2, GH/2, GW, GH, 0xeef4fc)); }
   _header(t, sub) {
-    this._o(this.add.rectangle(GW/2, 32, GW, 64, 0x0d3a8a));
-    this._o(this.add.text(GW/2, 23, t,   {font:'bold 21px Courier New', color:'#ffffff', letterSpacing:3}).setOrigin(0.5));
-    this._o(this.add.text(GW/2, 50, sub, {font:'11px Courier New',      color:'#8ab4e8', letterSpacing:2}).setOrigin(0.5));
+    this._o(this.add.rectangle(GW/2, 36, GW, 72, 0xd0e0f0)); 
+    this._o(this.add.rectangle(GW/2, 72, GW, 2, 0x0088aa, 0.4)); 
+    this._o(this.add.text(GW/2, 24, t,   {font:'bold 26px Courier New', color:'#062a6a', letterSpacing:4}).setOrigin(0.5));
+    this._o(this.add.text(GW/2, 54, sub, {font:'bold 13px Courier New', color:'#1a4a8a', letterSpacing:2}).setOrigin(0.5));
   }
 
   // ── Page 0: Overview ─────────────────────────────────────────
@@ -294,41 +301,39 @@ class TutorialScene extends Phaser.Scene {
     this._bg();
     this._header('THE BRILLIANT FACILITY', 'SYNCHROTRON FACILITY MANAGEMENT');
 
-    this._o(this.add.text(GW/2, 96, 'YOU ARE THE BEAMLINE SCIENTIST',
-      {font:'bold 14px Courier New', color:'#0d3a8a', letterSpacing:2}).setOrigin(0.5));
-    this._o(this.add.text(GW/2, 122,
+    this._o(this.add.text(GW/2, 120, 'YOU ARE THE BEAMLINE SCIENTIST',
+      {font:'bold 20px Courier New', color:'#0a3a8a', letterSpacing:2}).setOrigin(0.5));
+    this._o(this.add.text(GW/2, 160,
       'Researchers from around the world submit proposals for beam time at your synchrotron facility.\n' +
-      'Your job: run their samples through the beamlines and deliver results.',
-      {font:'13px Courier New', color:'#2a3a5a', align:'center', lineSpacing:6}).setOrigin(0.5));
+      'Your job is to run their samples through the beamlines and deliver results.',
+      {font:'16px Courier New', color:'#1a2a4a', align:'center', lineSpacing:8}).setOrigin(0.5));
 
     // Three-box flow diagram
     const FLOW = [
-      {x:GW/2-270, title:'PROPOSALS',   body:'Researchers submit\napplications for beam time', col:0x1a6aaa, tc:'#0d3a8a'},
-      {x:GW/2,     title:'EXPERIMENTS', body:'You run samples through\nthe synchrotron beamlines', col:0x2a9a5a, tc:'#0d5a2a'},
-      {x:GW/2+270, title:'REPUTATION',  body:'Success earns reputation\nand annual funding',        col:0xb38600, tc:'#7a5000'},
+      {x:GW/2-320, title:'PROPOSALS',   body:'Researchers submit\napplications for beam time', col:0x1a6a9a, tc:'#062a6a', bg:0xe6f0fa},
+      {x:GW/2,     title:'EXPERIMENTS', body:'You run samples through\nthe synchrotron beamlines', col:0x1a8a4a, tc:'#064a1a', bg:0xe6f5ea},
+      {x:GW/2+320, title:'REPUTATION',  body:'Success earns reputation\nand annual funding',        col:0xa37600, tc:'#5a3000', bg:0xfcf6e6},
     ];
     FLOW.forEach(f => {
-      this._o(this.add.rectangle(f.x, 248, 220, 100, f.col, 0.1).setStrokeStyle(2, f.col));
-      this._o(this.add.text(f.x, 216, f.title, {font:'bold 12px Courier New', color:f.tc, letterSpacing:2}).setOrigin(0.5));
-      this._o(this.add.text(f.x, 250, f.body,  {font:'12px Courier New', color:'#2a3a5a', align:'center', lineSpacing:5}).setOrigin(0.5));
+      this._o(this.add.rectangle(f.x, 320, 260, 120, f.bg).setStrokeStyle(2, f.col));
+      this._o(this.add.text(f.x, 280, f.title, {font:'bold 16px Courier New', color:f.tc, letterSpacing:2}).setOrigin(0.5));
+      this._o(this.add.text(f.x, 320, f.body,  {font:'15px Courier New', color:f.tc, align:'center', lineSpacing:8}).setOrigin(0.5));
     });
-    // Gap centers between boxes: box1 ends at 210+110=320, box2 starts at 480-110=370 → center 345
-    //                            box2 ends at 480+110=590, box3 starts at 750-110=640 → center 615
-    this._o(this.add.text(345, 248, '→', {font:'bold 24px Courier New', color:'#8ab4cc'}).setOrigin(0.5));
-    this._o(this.add.text(615, 248, '→', {font:'bold 24px Courier New', color:'#8ab4cc'}).setOrigin(0.5));
+    this._o(this.add.text(GW/2-160, 320, '→', {font:'bold 32px Courier New', color:'#6a8aab'}).setOrigin(0.5));
+    this._o(this.add.text(GW/2+160, 320, '→', {font:'bold 32px Courier New', color:'#6a8aab'}).setOrigin(0.5));
 
     // Year structure panel
-    this._o(this.add.rectangle(GW/2, 356, 720, 76, 0xf0f6ff).setStrokeStyle(1, 0xaabbdd));
-    this._o(this.add.text(GW/2, 336, 'YEAR STRUCTURE',
-      {font:'bold 11px Courier New', color:'#2a5a8a', letterSpacing:2}).setOrigin(0.5));
-    this._o(this.add.text(GW/2, 360,
+    this._o(this.add.rectangle(GW/2, 480, 800, 100, 0xe8f0f8).setStrokeStyle(2, 0xaabbdd));
+    this._o(this.add.text(GW/2, 455, 'YEAR STRUCTURE',
+      {font:'bold 15px Courier New', color:'#1a4a8a', letterSpacing:2}).setOrigin(0.5));
+    this._o(this.add.text(GW/2, 485,
       '3 proposal cycles per year  •  Each cycle ≈ 3 minutes of real time\n' +
       'Complete proposals to earn reputation  •  Reputation grows your annual grant',
-      {font:'12px Courier New', color:'#2a3a5a', align:'center', lineSpacing:6}).setOrigin(0.5));
+      {font:'15px Courier New', color:'#1a2a4a', align:'center', lineSpacing:8}).setOrigin(0.5));
 
-    this._o(this.add.text(GW/2, 438,
-      'Press [→] or NEXT to continue  •  [SPACE] or [ENTER] to advance pages',
-      {font:'11px Courier New', color:'#9aabcc', align:'center'}).setOrigin(0.5));
+    this._o(this.add.text(GW/2, GH-40,
+      'Press [→] or NEXT to continue  •  [SPACE] or [ENTER] to advance',
+      {font:'bold 14px Courier New', color:'#6a8aac', align:'center'}).setOrigin(0.5));
   }
 
   // ── Page 1: Sample Workflow ───────────────────────────────────
@@ -337,43 +342,42 @@ class TutorialScene extends Phaser.Scene {
     this._header('RUNNING AN EXPERIMENT', 'THE SAMPLE WORKFLOW — 4 STEPS');
 
     const STEPS = [
-      {num:'1', name:'USER NPC',        col:0x1a6aaa, tc:'#0d3a8a',
+      {num:'1', name:'USER NPC',           col:0x1a6aaa, tc:'#062a6a', bg:0xe6f0fa,
        desc:'Walk up to a researcher and press [SPACE] to collect their raw sample.'},
-      {num:'2', name:'PREP TABLE',      col:0x2a9a5a, tc:'#0d5a2a',
-       desc:'Deposit the sample with [SPACE]. The table auto-preps it. Pick it up once ready.'},
-      {num:'3', name:'BEAMLINE HUTCH',   col:0xaa4a10, tc:'#7a2a08',
+      {num:'2', name:'WET LAB / DRY LAB',  col:0x1a8a4a, tc:'#064a1a', bg:0xe6f5ea,
+       desc:'Go to the correct lab (🧪 Wet or 🔩 Dry). Deposit with [SPACE]. Auto-preps. Pick up once ready.'},
+      {num:'3', name:'BEAMLINE HUTCH',     col:0xa34600, tc:'#5a2000', bg:0xfcf0e6,
        desc:'Press [SPACE] to start experiment setup, then stay near the hutch while the bar fills.'},
-      {num:'4', name:'SCAN CONSOLE',    col:0x2a7a8a, tc:'#0d5a6a',
+      {num:'4', name:'CONTROL ROOM',       col:0x1a7a8a, tc:'#064a5a', bg:0xe6f4f6,
        desc:'Deposit the prepped sample [SPACE]. Auto-scan runs. Collect the result when done!'},
     ];
 
-    const SY = 84, SH = 90, GAP = 10;
+    const SY = 110, SH = 90, GAP = 12;
     STEPS.forEach((s, i) => {
       const y  = SY + i * (SH + GAP);
       const cy = y + SH / 2;
-      // Card background (x=500 center, width=860 → spans x 70–930)
-      this._o(this.add.rectangle(500, cy, 860, SH, s.col, 0.08).setStrokeStyle(1, s.col, 0.35));
-      // Left accent bar (inside left edge of card)
-      this._o(this.add.rectangle(73, cy, 6, SH - 8, s.col));
+      // Card background
+      this._o(this.add.rectangle(GW/2, cy, 960, SH, s.bg).setStrokeStyle(2, s.col, 0.5));
+      // Left accent bar
+      this._o(this.add.rectangle(GW/2 - 470, cy, 8, SH - 12, s.col));
       // Step circle + number
-      this._o(this.add.circle(96, cy, 17, s.col));
-      this._o(this.add.text(96, cy, s.num, {font:'bold 14px Courier New', color:'#fff'}).setOrigin(0.5));
+      this._o(this.add.circle(GW/2 - 410, cy, 22, s.col));
+      this._o(this.add.text(GW/2 - 410, cy, s.num, {font:'bold 18px Courier New', color:'#ffffff'}).setOrigin(0.5));
       // Station name + description
-      this._o(this.add.text(124, cy - 14, s.name, {font:'bold 13px Courier New', color:s.tc}));
-      this._o(this.add.text(124, cy + 6,  s.desc, {font:'12px Courier New',      color:'#3a4a5a'}));
+      this._o(this.add.text(GW/2 - 360, cy - 14, s.name, {font:'bold 18px Courier New', color:s.tc}));
+      this._o(this.add.text(GW/2 - 360, cy + 10,  s.desc, {font:'15px Courier New',      color:'#2a3a5a'}));
       // Connector arrow between steps
       if (i < STEPS.length - 1) {
-        this._o(this.add.text(96, y + SH + GAP / 2, '↓',
-          {font:'bold 13px Courier New', color:'#aabbcc'}).setOrigin(0.5));
+        this._o(this.add.text(GW/2 - 410, y + SH + GAP / 2, '↓',
+          {font:'bold 18px Courier New', color:'#8ab4cc'}).setOrigin(0.5));
       }
     });
 
-    // Footer note — noteY = SY + 4*(SH+GAP) + 10
-    const noteY = SY + 4 * (SH + GAP) + 10;
-    this._o(this.add.rectangle(GW/2, noteY + 14, 700, 32, 0xdce8f4).setStrokeStyle(1, 0x8ab4d8));
-    this._o(this.add.text(GW/2, noteY + 14,
+    const noteY = Math.min(GH - 64, SY + 4 * (SH + GAP) + 20);
+    this._o(this.add.rectangle(GW/2, noteY, 800, 36, 0xd0e0f0).setStrokeStyle(2, 0x8ab4d8));
+    this._o(this.add.text(GW/2, noteY,
       'Carry up to 3 samples at once  •  Up to 3 proposals run simultaneously',
-      {font:'12px Courier New', color:'#1a5a8a', align:'center'}).setOrigin(0.5));
+      {font:'bold 15px Courier New', color:'#062a6a', align:'center'}).setOrigin(0.5));
   }
 
   // ── Page 2: Controls + Tips + Start ──────────────────────────
@@ -382,42 +386,44 @@ class TutorialScene extends Phaser.Scene {
     this._header('READY TO BEGIN', 'CONTROLS & TIPS');
 
     // Left column — Controls
-    this._o(this.add.text(62, 84, 'CONTROLS', {font:'bold 12px Courier New', color:'#0d3a8a', letterSpacing:2}));
+    const leftX = GW/2 - 280;
+    this._o(this.add.text(leftX - 200, 110, 'CONTROLS', {font:'bold 18px Courier New', color:'#062a6a', letterSpacing:2}));
     const CTRL = [
-      ['WASD  /  ↑↓←→', 'Move your scientist'],
-      ['[SPACE]',        'Pick up / Deposit / Interact'],
-      ['[SPACE]',        'Beamline hutch — then stay near to complete'],
-      ['[ESC]',          'Pause game'],
+      ['WASD / ↑↓←→', 'Move scientist'],
+      ['[SPACE]',     'Pick up / Deposit /\nInteract'],
+      ['[SPACE]',     'Use Beamline Hutch\n(then stay near to complete)'],
+      ['[ESC]',       'Pause game'],
     ];
     CTRL.forEach(([key, desc], i) => {
-      const y = 108 + i * 44;
-      this._o(this.add.rectangle(238, y + 18, 356, 38, 0xffffff, 0.7).setStrokeStyle(1, 0xddeeff));
-      this._o(this.add.text(68, y + 8,  key,  {font:'bold 12px Courier New', color:'#1a5a9a'}));
-      this._o(this.add.text(68, y + 24, desc, {font:'11px Courier New',      color:'#4a5a7a'}));
+      const y = 160 + i * 68;
+      this._o(this.add.rectangle(leftX, y + 16, 440, 60, 0xffffff, 0.9).setStrokeStyle(2, 0xddeeff));
+      this._o(this.add.text(leftX - 200, y - 4,  key,  {font:'bold 16px Courier New', color:'#1a5a9a'}));
+      this._o(this.add.text(leftX - 20,  y - 4, desc, {font:'15px Courier New',      color:'#2a3a5a', lineSpacing:6}));
     });
 
     // Right column — Tips
-    this._o(this.add.text(490, 84, 'GOOD TO KNOW', {font:'bold 12px Courier New', color:'#0d3a8a', letterSpacing:2}));
+    const rightX = GW/2 + 280;
+    this._o(this.add.text(rightX - 200, 110, 'GOOD TO KNOW', {font:'bold 18px Courier New', color:'#062a6a', letterSpacing:2}));
     const TIPS = [
-      "Don't overcommit — unfinished proposals\ncost reputation at cycle end.",
-      "Prep Table and Scan Console both pause\nif you leave the station.",
-      "Reputation grows your annual funding grant.\nSpend funding on lab upgrades between cycles.",
-      "The ring degrades each cycle — keep ring\nhealth above 60% to avoid penalties.",
+      "Don't overcommit! Unfinished proposals\ncause reputation penalties at cycle end.",
+      "Prep Table and Scan Console actions\npause if you walk away from the station.",
+      "Reputation unlocks bigger annual funding\ngrants. Spend funding on lab upgrades.",
+      "The synchrotron ring degrades each cycle.\nKeep health above 60% or get penalties.",
     ];
     TIPS.forEach((tip, i) => {
-      const y = 108 + i * 78;
-      this._o(this.add.rectangle(706, y + 28, 428, 64, 0x1a6aaa, 0.07).setStrokeStyle(1, 0x8ab4d8));
-      this._o(this.add.text(498, y + 12, tip, {font:'12px Courier New', color:'#2a3a5a', lineSpacing:4}));
+      const y = 160 + i * 90;
+      this._o(this.add.rectangle(rightX, y + 16, 480, 80, 0xe6f0fa).setStrokeStyle(2, 0x8ab4d8));
+      this._o(this.add.text(rightX - 220, y - 10, tip, {font:'16px Courier New', color:'#1a2a4a', lineSpacing:6}));
     });
 
     // START GAME / CONTINUE button
-    const bx = GW / 2, by = 462;
+    const bx = GW / 2, by = GH - 140;
     const save = loadGame();
     if (save) {
       // Continue saved game (primary)
-      const cbg = this._o(this.add.rectangle(bx, by, 260, 44, 0x0a7a44).setStrokeStyle(2, 0x2aaa66));
+      const cbg = this._o(this.add.rectangle(bx, by, 320, 56, 0x0a7a44).setStrokeStyle(3, 0x2aaa66));
       const ctx = this._o(this.add.text(bx, by, 'CONTINUE  ▶',
-        {font:'bold 17px Courier New', color:'#ffffff', letterSpacing:2}).setOrigin(0.5));
+        {font:'bold 20px Courier New', color:'#ffffff', letterSpacing:3}).setOrigin(0.5));
       cbg.setInteractive({useHandCursor:true});
       cbg.on('pointerover',  () => cbg.setFillStyle(0x0a9a55));
       cbg.on('pointerout',   () => cbg.setFillStyle(0x0a7a44));
@@ -427,21 +433,21 @@ class TutorialScene extends Phaser.Scene {
       // Save summary
       const genNum  = getGeneration(save.year || 1);
       const genName = GENERATION_DATA[genNum - 1].name;
-      this._o(this.add.text(bx, by + 30,
+      this._o(this.add.text(bx, by + 40,
         `Year ${save.year}  ·  Cycle ${save.cycleInYear}/3  ·  ${genName}  ·  ⭐ ${save.reputation}`,
-        {font:'11px Courier New', color:'#4a8a66', align:'center'}).setOrigin(0.5));
+        {font:'bold 13px Courier New', color:'#2a6a46', align:'center'}).setOrigin(0.5));
       // New game link
-      const ng = this._o(this.add.text(bx, by + 50, '[ new game — erase save ]',
-        {font:'11px Courier New', color:'#aabbcc'}).setOrigin(0.5));
+      const ng = this._o(this.add.text(bx, by + 65, '[ new game — erase save ]',
+        {font:'bold 13px Courier New', color:'#8a9bac'}).setOrigin(0.5));
       ng.setInteractive({useHandCursor:true});
       ng.on('pointerover', () => ng.setStyle({color:'#cc5544'}));
-      ng.on('pointerout',  () => ng.setStyle({color:'#aabbcc'}));
+      ng.on('pointerout',  () => ng.setStyle({color:'#8a9bac'}));
       ng.on('pointerdown', () => this._startGame());
     } else {
       // Fresh start
-      const bbg = this._o(this.add.rectangle(bx, by, 250, 50, 0x0d3a8a).setStrokeStyle(2, 0x4a8add));
+      const bbg = this._o(this.add.rectangle(bx, by, 320, 56, 0x0d3a8a).setStrokeStyle(3, 0x4a8add));
       const btx = this._o(this.add.text(bx, by, 'START GAME  ▶',
-        {font:'bold 17px Courier New', color:'#ffffff', letterSpacing:2}).setOrigin(0.5));
+        {font:'bold 20px Courier New', color:'#ffffff', letterSpacing:3}).setOrigin(0.5));
       bbg.setInteractive({useHandCursor:true});
       bbg.on('pointerover',  () => bbg.setFillStyle(0x1a5aaa));
       bbg.on('pointerout',   () => bbg.setFillStyle(0x0d3a8a));
@@ -472,9 +478,11 @@ class TutorialScene extends Phaser.Scene {
       nx.setInteractive({useHandCursor:true});
       nx.on('pointerdown', () => { this.page++; this._show(); });
 
-      const sk = this._n(this.add.text(GW - 80, cy - 22, 'skip »',
-        {font:'11px Courier New', color:'#9aabcc'}).setOrigin(0.5));
+      const sk = this._n(this.add.text(GW - 80, cy - 32, '[ SKIP INTRO ]',
+        {font:'bold 12px Courier New', color:'#aa3322'}).setOrigin(0.5));
       sk.setInteractive({useHandCursor:true});
+      sk.on('pointerover', () => sk.setStyle({color:'#ff2200'}));
+      sk.on('pointerout', () => sk.setStyle({color:'#aa3322'}));
       sk.on('pointerdown', () => this._startGame());
     }
     // Keyboard navigation
@@ -500,7 +508,7 @@ class TutorialScene extends Phaser.Scene {
     clearSave();
     this.scene.start('ProposalReview', {
       cycle:1, cycleInYear:1, year:1, reputation:0, ringBase:98, funding:400,
-      upgrades:{prepCap:1, measCap:1, prepSpeed:1.0, measSpeed:1.0, extraJobSlots:0, ringMaint:false},
+      upgrades:{prepCap:1, measCap:1, prepSpeed:1.0, measSpeed:1.0, extraJobSlots:0, postdocs:0, postdocLevel:1, ringMaint:false},
     });
   }
 
@@ -534,7 +542,7 @@ class GameScene extends Phaser.Scene {
     this.upgrades   = (d&&d.upgrades)   || {
       prepCap:1, measCap:1,
       prepSpeed:1.0, measSpeed:1.0,
-      extraJobSlots:0,
+      extraJobSlots:0, postdocs:0, postdocLevel:1,
       ringMaint:false,
     };
     this.beamlineTechs = (d&&d.beamlineTechs) || pickBeamlineTechs(this.year);
@@ -554,17 +562,26 @@ class GameScene extends Phaser.Scene {
     this.pending = [];  // rapid-review proposals during gameplay
     this.active  = [];  // jobs in flight
 
-    // Split committed proposals: first MAX_ACTIVE go live, rest queue
-    this.commitQueue = [];   // proposals waiting for a slot to open
-    for (const p of this.committedProposals) {
+    // Speed multipliers must be set before _rollJobDurations is called below
+    this._prepSpeed = this.upgrades.prepSpeed || 1.0;
+    this._measSpeed = this.upgrades.measSpeed || 1.0;
+
+    // Stable NPC slot assignment — each active job keeps a fixed NPC position
+    this.npcSlotUsed = new Array(MAX_SLOTS).fill(false);
+
+    const INITIAL_ACTIVE = 1;
+    this.commitQueue = [];
+    const shuffled = [...this.committedProposals].sort(() => Math.random() - 0.5);
+    for (const p of shuffled) {
       const job = {
         id: this.jobIdCtr++, name: p.name, tech: p.tech,
         totalSamples: p.samples, rep: p.rep,
         done: 0, unstarted: p.samples,
-        committed: true,
+        committed: true, labType: p.labType || 'dry',
       };
-      const effectiveMax = MAX_ACTIVE + (this.upgrades.extraJobSlots||0);
-      if (this.active.length < effectiveMax) {
+      if (this.active.length < INITIAL_ACTIVE) {
+        this._rollJobDurations(job);
+        job.npcSlot = this._claimNpcSlot();
         this.active.push(job);
       } else {
         this.commitQueue.push(job);
@@ -582,9 +599,6 @@ class GameScene extends Phaser.Scene {
     this.measSlots   = [];   // capacity = this.measCap
     this.prepCap = this.upgrades.prepCap  || 1;
     this.measCap = this.upgrades.measCap  || 1;
-    // Apply speed upgrades
-    this._prepSpeed = this.upgrades.prepSpeed || 1.0;
-    this._measSpeed = this.upgrades.measSpeed || 1.0;
 
     // Beam dump state
     this.beamDump        = false;   // is beam dump active?
@@ -600,12 +614,12 @@ class GameScene extends Phaser.Scene {
     // Layout
     this.HUD_H  = 64;
     this.BOARD_W = 0;      // Removed left board
-    this.JOBS_W  = 180;    // Narrowed right panel
+    this.JOBS_W  = 260;    // Widened right panel
     this.PLAY_W  = GW - this.BOARD_W - this.JOBS_W;
     this.CX = this.PLAY_W / 2;
     this.CY = this.HUD_H + (GH - this.HUD_H) / 2;
-    this.RING_RAD = 130;   // Central storage ring radius
-    this.PREP_RAD = 195;   // Prep room outer radius
+    this.RING_RAD = 190;   // Central storage ring radius
+    this.PREP_RAD = 275;   // Prep room outer radius
 
     this.buildFloor();
     this.buildLayout();
@@ -616,7 +630,10 @@ class GameScene extends Phaser.Scene {
     this.buildPostdocs();     // postdocs after player (depth 9, under player depth 10)
     this.buildProgressBar();  // progress bar AFTER player
     this.buildHUD();
-    this.refreshNPCs();           // show NPCs for pre-loaded committed proposals
+    
+    // Auto-fill the proposal hub to capacity now that UI exists
+    this.restockProposalHub();
+    this.refreshNPCs();
 
     this.cursors  = this.input.keyboard.createCursorKeys();
     this.wasd     = this.input.keyboard.addKeys({up:'W',down:'S',left:'A',right:'D'});
@@ -746,29 +763,58 @@ class GameScene extends Phaser.Scene {
     g.fillCircle(this.CX, this.CY, this.PREP_RAD);
 
     this.beamlineAngles = [45, 135, 225, 315].map(a => a + (this.beamlineRotOffset || 0));
-    const ctrlLen = 48, ctrlWid = 76;
-    const hutchLen = 66, hutchWid = 76;
+    const ctrlLen = 60, ctrlWid = 76;
+    const hutchLen = 60, hutchWid = 76;
     this.roomGeo = [];
 
     this.beamlineAngles.forEach((deg, idx) => {
       const rad = Phaser.Math.DegToRad(deg);
-      const dist1 = this.PREP_RAD + ctrlLen/2;
-      const x1 = this.CX + Math.cos(rad) * dist1;
-      const y1 = this.CY + Math.sin(rad) * dist1;
-      const dist2 = dist1 + ctrlLen/2 + hutchLen/2;
-      const x2 = this.CX + Math.cos(rad) * dist2;
-      const y2 = this.CY + Math.sin(rad) * dist2;
+      
+      // Sink slightly to ensure visual corners don't detach from the circle
+      const dist = this.PREP_RAD + Math.max(ctrlLen, hutchLen)/2 - 10;
+      const baseX = this.CX + Math.cos(rad) * dist;
+      const baseY = this.CY + Math.sin(rad) * dist;
+
+      // Tangent vector for side-by-side shift
+      const tX = -Math.sin(rad);
+      const tY = Math.cos(rad);
+      const shiftDist = (ctrlWid + hutchWid) / 4; // place them exactly touching
+
+      const x1 = baseX - tX * shiftDist;
+      const y1 = baseY - tY * shiftDist;
+      const x2 = baseX + tX * shiftDist;
+      const y2 = baseY + tY * shiftDist;
 
       bg(this.add.rectangle(x1, y1, ctrlLen, ctrlWid, C.prepRoom).setRotation(rad).setDepth(3));
+      
+      // Calculate a corner offset relative to the room's rotation
+      const lX = 14, lY = -22; 
+      const oX = lX * Math.cos(rad) - lY * Math.sin(rad);
+      const oY = lX * Math.sin(rad) + lY * Math.cos(rad);
+      
+      bg(this.add.text(x1 + oX, y1 + oY, '💻', {font:'16px Arial', alpha:0.45}).setOrigin(0.5).setDepth(4));
+      
       bg(this.add.rectangle(x2, y2, hutchLen, hutchWid, C.hutch).setRotation(rad).setDepth(3));
+      bg(this.add.text(x2 + oX, y2 + oY, '🔬', {font:'16px Arial', alpha:0.45}).setOrigin(0.5).setDepth(4));
+
       this.roomGeo.push(
         { key: `meas_${idx}`, cx: x1, cy: y1, w: ctrlLen, h: ctrlWid, rad },
         { key: `exp_setup_${idx}`, cx: x2, cy: y2, w: hutchLen, h: hutchWid, rad }
       );
-      bg(this.add.text(x2, y2 - 20, `BL-${idx+1}`,
-        {font:'bold 22px Courier New',color:'#2a8a60',stroke:'#ffffff',strokeThickness:1,letterSpacing:1}).setOrigin(0.5).setDepth(6));
-      bg(this.add.text(x2, y2 + 6, this.beamlineTechs[idx],
-        {font:'bold 8px Courier New',color:'#1a5040',stroke:'#ffffff',strokeThickness:1,wordWrap:{width:72},align:'center'}).setOrigin(0.5).setDepth(6));
+
+      // BL number sits radially outside the center of the pair
+      const lbldist1 = Math.max(ctrlLen, hutchLen) / 2 + 30;
+      const lblX1 = baseX + Math.cos(rad) * lbldist1;
+      const lblY1 = baseY + Math.sin(rad) * lbldist1;
+      bg(this.add.text(lblX1, lblY1, `BL-${idx+1}`,
+        {font:'bold 24px Courier New',color:BL_TXT[idx],stroke:'#ffffff',strokeThickness:2,letterSpacing:1}).setOrigin(0.5).setDepth(6));
+      
+      // Technique name sits slightly further out
+      const lbldist2 = Math.max(ctrlLen, hutchLen) / 2 + 50;
+      const lblX2 = baseX + Math.cos(rad) * lbldist2;
+      const lblY2 = baseY + Math.sin(rad) * lbldist2;
+      bg(this.add.text(lblX2, lblY2, this.beamlineTechs[idx],
+        {font:'bold 14px Courier New',color:BL_TXT[idx],stroke:'#ffffff',strokeThickness:2,align:'center'}).setOrigin(0.5).setDepth(6));
     });
 
     const roomOutlineG = bg(this.add.graphics().setDepth(5));
@@ -818,33 +864,36 @@ class GameScene extends Phaser.Scene {
     this.stDefs = {
       prep: {
         x: this.CX, y: this.CY - this.RING_RAD - 20, 
-        w: 120, h: 36, base: C.prepSt, hot: C.prepSt,
-        icon: '⚗️', label: 'Sample prep lab', r: 50
+        w: 120, h: 36, base: 0x88aadd, hot: 0x88aadd,
+        icon: '', label: 'Wet Lab 🧪', r: 50, labType: 'wet'
       },
       prep2: {
         x: this.CX, y: this.CY + this.RING_RAD + 20, 
-        w: 120, h: 36, base: C.prepSt, hot: C.prepSt,
-        icon: '⚗️', label: 'Sample prep lab', r: 50
+        w: 120, h: 36, base: 0xccaa77, hot: 0xccaa77,
+        icon: '', label: 'Dry Lab 🔩', r: 50, labType: 'dry'
       }
     };
-    this.prepKeys = ['prep', 'prep2'];  // both prep tables share the same slots
+    this.prepKeys = ['prep', 'prep2'];  // prep = wet lab, prep2 = dry lab
     
     // 2. Beamline components: 4 Experiment Setups and 4 Measurement Consoles
     this.beamlines = [];
-    const ctrlLen = 48, ctrlWid = 76, hutchLen = 66, hutchWid = 76;
+    const ctrlLen = 60, ctrlWid = 76, hutchLen = 60, hutchWid = 76;
     
     this.beamlineAngles.forEach((deg, i) => {
       const rad = Phaser.Math.DegToRad(deg);
       
-      // Control Room center
-      const distCtrl = this.PREP_RAD + ctrlLen/2;
-      const x1 = this.CX + Math.cos(rad) * distCtrl;
-      const y1 = this.CY + Math.sin(rad) * distCtrl;
+      const dist = this.PREP_RAD + Math.max(ctrlLen, hutchLen)/2 - 10;
+      const baseX = this.CX + Math.cos(rad) * dist;
+      const baseY = this.CY + Math.sin(rad) * dist;
 
-      // Hutch center
-      const distHutch = distCtrl + ctrlLen/2 + hutchLen/2;
-      const x2 = this.CX + Math.cos(rad) * distHutch;
-      const y2 = this.CY + Math.sin(rad) * distHutch;
+      const tX = -Math.sin(rad);
+      const tY = Math.cos(rad);
+      const shiftDist = (ctrlWid + hutchWid) / 4; // place them exactly touching
+
+      const x1 = baseX - tX * shiftDist;
+      const y1 = baseY - tY * shiftDist;
+      const x2 = baseX + tX * shiftDist;
+      const y2 = baseY + tY * shiftDist;
 
       const sk = `meas_${i}`;
       this.stDefs[sk] = {
@@ -875,7 +924,7 @@ class GameScene extends Phaser.Scene {
       this.drawSt(k,false,null,false);
       if(st.icon && st.w > 0) bg(this.add.text(st.x,st.y-5,st.icon,{font:'18px Arial'}).setOrigin(0.5));
       if(st.label && st.w > 0) bg(this.add.text(st.x,st.y+10,st.label,
-        {font:'bold 12px Courier New',color:'#1a3a5a',letterSpacing:1}).setOrigin(0.5));
+        {font:'bold 13px Courier New',color:'#ffffff',letterSpacing:1}).setOrigin(0.5));
     }
 
     // Station processing bars (shown while auto-processing)
@@ -883,7 +932,7 @@ class GameScene extends Phaser.Scene {
     const barKeys = [...this.prepKeys, ...this.beamlines.map(b => b.measKey)];
     for (const k of barKeys) {
       const st = this.stDefs[k];
-      const bw = 60;
+      const bw = k.startsWith('meas') ? 96 : 60;
       const bx = (st.boxCX !== undefined ? st.boxCX : st.x) - bw / 2;
       const by = (st.boxCY !== undefined ? st.boxCY : st.y) + 26;
       const bar = new ProgressBar(this, bx, by, bw, 8, { bgColor: 0xddeef8, bgAlpha: 1 });
@@ -1009,8 +1058,6 @@ class GameScene extends Phaser.Scene {
     const prepStPos = this.prepKeys.map(k => ({ x: this.stDefs[k].x, y: this.stDefs[k].y }));
     const prepClearance = 80; // px buffer around each prep station (half-diagonal of table + margin)
 
-    const beamRads = this.beamlineAngles.map(d => Phaser.Math.DegToRad(d));
-    const angMargin = Phaser.Math.DegToRad(35);
     const minSep = 70;
     this.npcPos = [];
 
@@ -1024,12 +1071,6 @@ class GameScene extends Phaser.Scene {
         const r = minR + Math.random() * (maxR - minR);
         const cx = this.CX + Math.cos(angle) * r;
         const cy = this.CY + Math.sin(angle) * r;
-        const nearBeam = beamRads.some(ba => {
-          let d = Math.abs(angle - ba) % (Math.PI * 2);
-          if (d > Math.PI) d = Math.PI * 2 - d;
-          return d < angMargin;
-        });
-        if (nearBeam) continue;
         if (!isClearOfPrep(cx, cy)) continue;
         const tooClose = this.npcPos.some(p =>
           Phaser.Math.Distance.Between(cx, cy, p.x, p.y) < minSep
@@ -1041,10 +1082,11 @@ class GameScene extends Phaser.Scene {
       if (!pos) {
         // Fallback: try safe angles in order, checking all constraints
         const fallback = [10, 100, 170, 260, 350, 55, 145, 215, 305, 0];
+        const midR = (minR + maxR) / 2;
         for (const deg of fallback) {
           const rad = Phaser.Math.DegToRad(deg);
-          const fx = this.CX + Math.cos(rad) * 165;
-          const fy = this.CY + Math.sin(rad) * 165;
+          const fx = this.CX + Math.cos(rad) * midR;
+          const fy = this.CY + Math.sin(rad) * midR;
           if (!isClearOfPrep(fx, fy)) continue;
           const tooClose = this.npcPos.some(p =>
             Phaser.Math.Distance.Between(fx, fy, p.x, p.y) < minSep
@@ -1052,8 +1094,8 @@ class GameScene extends Phaser.Scene {
           if (!tooClose) { pos = { x: fx, y: fy }; break; }
         }
         // Absolute last resort — should never happen with enough fallback angles
-        if (!pos) pos = { x: this.CX + Math.cos(Phaser.Math.DegToRad(i * 72)) * 165,
-                          y: this.CY + Math.sin(Phaser.Math.DegToRad(i * 72)) * 165 };
+        if (!pos) pos = { x: this.CX + Math.cos(Phaser.Math.DegToRad(i * 72)) * midR,
+                          y: this.CY + Math.sin(Phaser.Math.DegToRad(i * 72)) * midR };
       }
       this.npcPos.push(pos);
     }
@@ -1070,25 +1112,27 @@ class GameScene extends Phaser.Scene {
         {font:'11px Courier New',color:JOB_TXT[i],align:'center',wordWrap:{width:80}}).setOrigin(0.5);
       const ring = this.add.circle(0,0,18,0xffffff,0);
       ring.setStrokeStyle(1.5,JOB_HEX[i],0.4);
-      grp.add([nameTag,ring]);
-      this.tweens.add({targets:grp,y:pos.y-5,duration:680+i*130,yoyo:true,repeat:-1,ease:'Sine.easeInOut'});
-      return {grp,nameTag,ring};
+      // Leave timer bar — added to grp so it bobs with the NPC
+      const leaveBarBg   = this.add.rectangle(-14,-24,28,4,0x223344,0.85).setOrigin(0,0.5);
+      const leaveBarFill = this.add.rectangle(-14,-24, 1,4,0x44cc88,1 ).setOrigin(0,0.5);
+      grp.add([nameTag,ring,leaveBarBg,leaveBarFill]);
+      return {grp,nameTag,ring,leaveBarBg,leaveBarFill};
     });
   }
 
   refreshNPCs() {
-    // Show NPCs for all committed proposals (active + queued) until their work is done
-    const allCommitted = [...this.active, ...this.commitQueue];
+    // Only show NPCs for active jobs; each job owns a stable NPC slot via job.npcSlot
     for (let i = 0; i < MAX_SLOTS; i++) {
-      const j = allCommitted[i];
       const npc = this.npcs[i];
       if (!npc) continue;
-      if (j && j.done < j.totalSamples) {
-        npc.grp.setAlpha(1);
-        npc.nameTag.setText(j.name.split(' ').slice(-1)[0]);
-      } else {
-        npc.grp.setAlpha(0);
-      }
+      const j = this.active.find(a => a.npcSlot === i);
+      const visible = !!j && j.done < j.totalSamples && !j.npcGone;
+      npc.grp.setAlpha(visible ? 1 : 0);
+      if (visible) npc.nameTag.setText(j.name.split(' ').slice(-1)[0]);
+      // Leave bar visible whenever the NPC is visible (timer pre-rolled for all active jobs)
+      const showBar = visible && j.leaveMs !== undefined;
+      npc.leaveBarBg.setVisible(showBar);
+      npc.leaveBarFill.setVisible(showBar);
     }
   }
 
@@ -1114,21 +1158,21 @@ class GameScene extends Phaser.Scene {
       
       // -- ACTIVE JOB ELEMENTS --
       const dot   =this.add.circle(rx+16,sy+16,6,JOB_HEX[i]);
-      const name  =this.add.text(rx+28,sy+9,'',{font:'bold 13px Courier New',color:JOB_TXT[i],wordWrap:{width:145}});
+      const name  =this.add.text(rx+28,sy+9,'',{font:'bold 13px Courier New',color:JOB_TXT[i],wordWrap:{width:this.JOBS_W-40}});
       const tech  =this.add.text(rx+8,sy+30,'',{font:'11px Courier New',color:'#2a7a9a'});
       const prog  =this.add.text(rx+8,sy+43,'',{font:'bold 12px Courier New',color:'#00cc88'});
-      const state =this.add.text(rx+8,sy+55,'',{font:'12px Courier New',color:'#ccaa44',wordWrap:{width:164}});
-      const pipBar = new ProgressBar(this, rx+8, sy+78, 164, 8,
+      const state =this.add.text(rx+8,sy+55,'',{font:'12px Courier New',color:'#ccaa44',wordWrap:{width:this.JOBS_W-16}});
+      const pipBar = new ProgressBar(this, rx+8, sy+78, this.JOBS_W-16, 8,
         { bgColor:0xd8e8f4, bgAlpha:1, fillColor:JOB_HEX[i], depth:0 });
 
       // -- PENDING PROPOSAL ELEMENTS --
-      const pendTit = this.add.text(rx+8,sy+6, '',{font:'bold 11px Courier New',color:'#2a5a8a',wordWrap:{width:150}});
-      const pendSub = this.add.text(rx+8,sy+20,'',{font:'11px Courier New',color:'#4a5a6a',wordWrap:{width:150}});
-      const pendRep = this.add.text(rx+8,sy+34,'',{font:'bold 12px Courier New',color:'#b38600'});
-      const pendTim = this.add.text(rx+8,sy+46,'',{font:'12px Courier New',color:'#aa4422'});
-      const pendBar = new ProgressBar(this, rx+8, sy+60, 164, 4,
+      const pendTit = this.add.text(rx+8,sy+6, '',{font:'bold 11px Courier New',color:'#2a5a8a',wordWrap:{width:this.JOBS_W-16}});
+      const pendSub = this.add.text(rx+8,sy+22,'',{font:'11px Courier New',color:'#4a5a6a',wordWrap:{width:this.JOBS_W-16}});
+      const pendRep = this.add.text(rx+8,sy+36,'',{font:'bold 12px Courier New',color:'#b38600'});
+      const pendTim = this.add.text(rx+8,sy+48,'',{font:'12px Courier New',color:'#aa4422'});
+      const pendBar = new ProgressBar(this, rx+8, sy+62, this.JOBS_W-16, 4,
         { bgColor:0xe8e4e0, bgAlpha:1, fillColor:0xff8844, depth:0 });
-      const pendBtn = this.add.text(rx+this.JOBS_W/2,sy+74,'[ CLICK TO ACCEPT ]',
+      const pendBtn = this.add.text(rx+this.JOBS_W/2,sy+78,'[ CLICK TO ACCEPT ]',
         {font:'bold 13px Courier New',color:'#0a8a5a'}).setOrigin(0.5).setInteractive({useHandCursor:true});
       pendBtn.on('pointerover',()=>pendBtn.setStyle({color:'#0ab877'}));
       pendBtn.on('pointerout', ()=>pendBtn.setStyle({color:'#0a8a5a'}));
@@ -1141,7 +1185,8 @@ class GameScene extends Phaser.Scene {
         bg,
         dot,name,tech,prog,state,pipBar,
         pendTit,pendSub,pendRep,pendTim,pendBar,pendBtn,
-        linkedPendingIdx: -1
+        linkedPendingIdx: -1,
+        linkedQueueIdx:   -1,
       });
     }
     this.refreshJobs();
@@ -1149,30 +1194,31 @@ class GameScene extends Phaser.Scene {
 
   refreshJobs() {
     const effSlots = MAX_ACTIVE + (this.upgrades ? this.upgrades.extraJobSlots||0 : 0);
-    // Queue label
-    if (this.queueLbl) {
-      const q = this.commitQueue ? this.commitQueue.length : 0;
-      this.queueLbl.setText(q > 0 ? `+${q} queued` : '');
-    }
-    
-    let pIdx = 0; // index tracking which pending proposal we're drawing
+    if (this.queueLbl) this.queueLbl.setText('');
+
+    let qIdx = 0; // index into this.commitQueue
+    let pIdx = 0; // index into this.pending
 
     for(let i=0;i<MAX_SLOTS;i++){
       const d=this.jobSlots[i];
       const j=this.active[i];
-      
+
       if(j){
         // ── Slot is ACTIVE JOB ──
         d.linkedPendingIdx = -1;
+        d.linkedQueueIdx   = -1;
         d.bg.setAlpha(1).setFillStyle(0xf0f6fc).setStrokeStyle(1,0xaaccdd);
         d.dot.setAlpha(1);
         [d.name,d.tech,d.prog,d.state].forEach(o=>o.setVisible(true));
         [d.pendTit,d.pendSub,d.pendRep,d.pendTim,d.pendBtn].forEach(o=>o.setVisible(false));
         d.pendBar.hide();
 
-        d.name.setText(j.name); d.tech.setText(j.tech);
+        const labIcon = j.labType === 'wet' ? '🧪' : '🔩';
+        d.name.setText(`${labIcon} ${j.name}`);
+        const blIdx = this.beamlineTechs.indexOf(j.tech);
+        d.tech.setText(j.tech).setStyle({color: blIdx >= 0 ? BL_TXT[blIdx] : '#2a7a9a'});
         d.prog.setText(`${j.done}/${j.totalSamples} done`);
-        
+
         const inHand  = this.held.filter(h=>h.jobId===j.id).length;
         const inPrep  = this.prepKeys.reduce((n,pk) => n + this.prepSlotsFor[pk].filter(s=>s.jobId===j.id).length, 0);
         const inMeas  = this.measSlots.filter(s=>s.jobId===j.id).length;
@@ -1183,13 +1229,40 @@ class GameScene extends Phaser.Scene {
         if(inMeas>0)       parts.push(`${inMeas} measuring`);
         d.state.setText(parts.join(', ') || '→ collect sample');
         d.pipBar.setFraction(j.done/j.totalSamples).setFillStyle(JOB_HEX[i]).show();
-      } else if (pIdx < this.pending.length && i < MAX_SLOTS) {
-        // ── Slot is PENDING PROPOSAL ──
+      } else if (qIdx < this.commitQueue.length) {
+        // ── Slot is QUEUED COMMITTED PROPOSAL (click to activate) ──
+        d.linkedPendingIdx = -1;
+        d.linkedQueueIdx   = qIdx;
+        const p = this.commitQueue[qIdx++];
+
+        d.bg.setAlpha(1).setFillStyle(0xeaf4ff).setStrokeStyle(1,0x4488bb);
+        d.dot.setAlpha(0);
+        [d.name,d.tech,d.prog,d.state].forEach(o=>o.setVisible(false));
+        [d.pendTit,d.pendSub,d.pendRep,d.pendTim,d.pendBtn].forEach(o=>o.setVisible(true));
+        d.pipBar.hide();
+        d.pendBar.hide();
+
+        const slotsFull = this.active.length >= effSlots;
+        const labIcon = p.labType === 'wet' ? '🧪' : '🔩';
+        d.pendTit.setText(`📋 ${labIcon} ${p.name}`).setStyle({color:'#1a4a7a'});
+        const blIdx = this.beamlineTechs.indexOf(p.tech);
+        d.pendSub.setText(p.tech).setStyle({color: blIdx >= 0 ? BL_TXT[blIdx] : '#4a5a6a'});
+        d.pendRep.setText(`⭐ +${p.rep} rep`);
+        d.pendTim.setText(`📦 ${p.totalSamples || p.samples} samples  ·  committed`).setStyle({color:'#2a5a8a'});
+        if (slotsFull) {
+          d.pendBtn.setText('[ NO SLOT AVAILABLE ]').setStyle({color:'#888888'});
+          d.bg.setFillStyle(0xf4f4f4).setStrokeStyle(1,0xaaaaaa);
+        } else {
+          d.pendBtn.setText('[ CLICK TO START ]').setStyle({color:'#1a6aaa'});
+        }
+      } else if (pIdx < this.pending.length) {
+        // ── Slot is PENDING RAPID-REVIEW PROPOSAL ──
         d.linkedPendingIdx = pIdx;
+        d.linkedQueueIdx   = -1;
         const p = this.pending[pIdx++];
         const f = p.timeLeft / PROPOSAL_LIFE;
         const tc = f>0.5?'#1a8844':f>0.25?'#aa6600':'#cc1100';
-        
+
         d.bg.setAlpha(1).setFillStyle(0xfffdf4).setStrokeStyle(1,0xddaa44);
         d.dot.setAlpha(0);
         [d.name,d.tech,d.prog,d.state].forEach(o=>o.setVisible(false));
@@ -1197,9 +1270,11 @@ class GameScene extends Phaser.Scene {
         d.pipBar.hide();
 
         const slotsFull = this.active.length >= effSlots;
-        d.pendTit.setText(`⚡ ${p.name}`);
-        d.pendSub.setText(p.tech);
-        d.pendRep.setText(`⭐ +${p.rep} rep bnus`);
+        const labIcon = p.labType === 'wet' ? '🧪' : '🔩';
+        d.pendTit.setText(`⚡ ${labIcon} ${p.name}`).setStyle({color:'#2a5a8a'});
+        const blIdx = this.beamlineTechs.indexOf(p.tech);
+        d.pendSub.setText(p.tech).setStyle({color: blIdx >= 0 ? BL_TXT[blIdx] : '#4a5a6a'});
+        d.pendRep.setText(`⭐ +${p.rep} rep bonus`);
         d.pendTim.setText(`📦 ${p.samples} spl  ⏱ ${p.timeLeft}s`).setStyle({color:tc});
         d.pendBar.setFraction(f).setFillStyle(f>0.5?0x44bb44:f>0.25?0xddaa44:0xff4444).show();
         if (slotsFull) {
@@ -1211,6 +1286,7 @@ class GameScene extends Phaser.Scene {
       } else {
         // ── Slot is COMPLETELY EMPTY ──
         d.linkedPendingIdx = -1;
+        d.linkedQueueIdx   = -1;
         d.bg.setAlpha(0.3).setFillStyle(0xf0f6fc).setStrokeStyle(1,0xaaccdd);
         d.dot.setAlpha(0.2);
         [d.name,d.tech,d.prog,d.state].forEach(o=>o.setVisible(true));
@@ -1226,27 +1302,18 @@ class GameScene extends Phaser.Scene {
 
   // ── Player sprite ─────────────────────────────────────────
   buildPlayer() {
-    // Spawn in corridor outside the prep ring — not in the Sample Prep Lab
-    const corridorMinR = this.PREP_RAD + 20;
-    const corridorMaxR = this.PREP_RAD + 65;
-    // Cardinal angles (0°,90°,180°,270°) sit between diagonal beamlines (45°,135°,225°,315°)
-    const cardinals = [0, 90, 180, 270].map(d => Phaser.Math.DegToRad(d));
-    const spread = Phaser.Math.DegToRad(25);
+    // Spawn inside the main central corridor ring
+    const corridorMinR = this.RING_RAD + 20;
+    const corridorMaxR = this.PREP_RAD - 20;
     let spawnX = this.CX + corridorMinR, spawnY = this.CY;
     for (let i = 0; i < 200; i++) {
-      const baseAngle = cardinals[Math.floor(Math.random() * cardinals.length)];
-      const angle = baseAngle + (Math.random() * 2 - 1) * spread;
+      const angle = Math.random() * Math.PI * 2;
       const r = corridorMinR + Math.random() * (corridorMaxR - corridorMinR);
       const cx = this.CX + Math.cos(angle) * r;
       const cy = this.CY + Math.sin(angle) * r;
-      const blocked = Object.values(this.stDefs).some(st => {
-        if (st.boxW === undefined) return false;
-        const cos = Math.cos(-st.boxRad), sin = Math.sin(-st.boxRad);
-        const dx = cx - st.boxCX, dy = cy - st.boxCY;
-        const lx = dx * cos - dy * sin, ly = dx * sin + dy * cos;
-        return Math.abs(lx) <= st.boxW / 2 && Math.abs(ly) <= st.boxH / 2;
-      });
-      if (!blocked) { spawnX = cx; spawnY = cy; break; }
+      
+      const inRoom = Object.values(this.stDefs).some(st => this.isPointInSt(st, cx, cy));
+      if (!inRoom) { spawnX = cx; spawnY = cy; break; }
     }
     this.px = spawnX;
     this.py = spawnY;
@@ -1258,6 +1325,7 @@ class GameScene extends Phaser.Scene {
       this.add.circle(0,-9,7,C.hat),
       this.add.text(0,18,'YOU',{font:'bold 12px Courier New',color:'#0a3a8a'}).setOrigin(0.5),
     ]);
+
 
     // Inventory dots above player head
     this.invDots=[];
@@ -1278,7 +1346,7 @@ class GameScene extends Phaser.Scene {
   // ── Postdoc NPCs ─────────────────────────────────────────────
   buildPostdocs() {
     this.postdocs = [];
-    const count = this.upgrades.extraJobSlots || 0;
+    const count = this.upgrades.postdocs || 0;
     for (let i = 0; i < count; i++) {
       const angle = Math.PI * (i === 0 ? 0.75 : 0.25);
       const r = this.PREP_RAD - 30;
@@ -1293,62 +1361,158 @@ class GameScene extends Phaser.Scene {
       ]);
       const label = this.add.text(0, -20, 'idle', {font:'10px Courier New', color:'#6699cc'}).setOrigin(0.5);
       grp.add(label);
-      this.postdocs.push({ x, y, grp, label, targetX: x, targetY: y, targetKey: null, thinkTimer: 0 });
+      this.postdocs.push({ x, y, grp, label, targetX: x, targetY: y, targetKey: null, thinkTimer: 0,
+                            state: 'idle', assignedAction: null });
     }
   }
 
   updatePostdocs(delta) {
-    const SPD = 120, dt = delta / 1000;
+    const SPD = this.SPD, dt = delta / 1000;
     for (const pd of this.postdocs) {
       pd.thinkTimer -= delta;
       if (pd.thinkTimer <= 0) {
         pd.thinkTimer = 1500;
-        const t = this._postdocTarget(pd);
+        const level = this.upgrades.postdocLevel || 1;
+        const t = level >= 2 ? this._postdocTargetL2(pd) : this._postdocTargetL1(pd);
         if (t) {
           pd.targetKey = t.key; pd.targetX = t.x; pd.targetY = t.y;
-          pd.label.setText('▶');
+          pd.assignedAction = t.action;
+          pd.state = 'moving';
+          pd.label.setText('▶ helping');
         } else {
-          pd.targetKey = null;
-          const a = Math.random() * Math.PI * 2;
-          const r = this.RING_RAD + 30 + Math.random() * (this.PREP_RAD - this.RING_RAD - 50);
-          pd.targetX = Phaser.Math.Clamp(this.CX + Math.cos(a) * r, 14, this.PLAY_W - 14);
-          pd.targetY = Phaser.Math.Clamp(this.CY + Math.sin(a) * r, this.HUD_H + 14, GH - 14);
-          pd.label.setText('idle');
+          // Clear assignment if the action we were helping with is no longer active
+          if (pd.assignedAction) {
+            pd.assignedAction = null;
+            pd.state = 'idle';
+          }
+          if (pd.state === 'idle') {
+            pd.targetKey = null;
+            const a = Math.random() * Math.PI * 2;
+            const r = this.RING_RAD + 30 + Math.random() * (this.PREP_RAD - this.RING_RAD - 50);
+            pd.targetX = Phaser.Math.Clamp(this.CX + Math.cos(a) * r, 14, this.PLAY_W - 14);
+            pd.targetY = Phaser.Math.Clamp(this.CY + Math.sin(a) * r, this.HUD_H + 14, GH - 14);
+            pd.label.setText('idle');
+          }
         }
       }
       const dx = pd.targetX - pd.x, dy = pd.targetY - pd.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist > 4) {
-        let nx = pd.x + (dx / dist) * SPD * dt;
-        let ny = pd.y + (dy / dist) * SPD * dt;
-        const dc = Phaser.Math.Distance.Between(nx, ny, this.CX, this.CY);
-        if (dc < this.RING_RAD + 10) {
-          const ang = Phaser.Math.Angle.Between(this.CX, this.CY, nx, ny);
-          nx = this.CX + Math.cos(ang) * (this.RING_RAD + 10);
-          ny = this.CY + Math.sin(ang) * (this.RING_RAD + 10);
-        }
-        pd.x = nx; pd.y = ny;
+        let stepX = (dx / dist) * SPD * dt;
+        let stepY = (dy / dist) * SPD * dt;
+        if (this.isValidPos(pd.x + stepX, pd.y, 8)) pd.x += stepX;
+        if (this.isValidPos(pd.x, pd.y + stepY, 8)) pd.y += stepY;
         pd.grp.setPosition(pd.x, pd.y);
+      } else if (pd.state === 'moving' && pd.assignedAction) {
+        // Arrived at target — start working
+        pd.state = 'working';
+        pd.label.setText('⚙ working');
       }
     }
   }
 
-  _postdocTarget(pd) {
+  // Level 1 AI: only react to player-initiated actions in rooms
+  _postdocTargetL1(pd) {
     const candidates = [];
+
+    // 1. Prep rooms — player is in a prep station AND there's an active prep slot
     for (const pk of this.prepKeys) {
       const st = this.stDefs[pk];
-      if (!this.prepSlotsFor[pk].some(s => !s.toStage)) continue;
-      if (this.isPointInSt(st, this.px, this.py)) continue;
+      const playerInPrep = this.isPointInSt(st, this.px, this.py);
+      const hasActiveSlot = this.prepSlotsFor[pk].some(s => !s.toStage);
+      if (!playerInPrep || !hasActiveSlot) continue;
       if (this.postdocs.some(p => p !== pd && p.targetKey === pk)) continue;
-      candidates.push({ key: pk, x: st.x, y: st.y });
+      candidates.push({ key: pk, x: st.x, y: st.y, action: { type: 'prep', key: pk } });
     }
+
+    // 2. Experiment setup — player is actively doing experiment setup at a hutch
+    if (this.doingExpSetup && this.activeExpSetupIdx >= 0) {
+      const bl = this.beamlines[this.activeExpSetupIdx];
+      const st = this.stDefs[bl.lockKey];
+      const lk = bl.lockKey;
+      if (!this.postdocs.some(p => p !== pd && p.targetKey === lk)) {
+        candidates.push({ key: lk, x: st.boxCX, y: st.boxCY,
+                          action: { type: 'expSetup', key: lk, blIdx: bl.idx } });
+      }
+    }
+
+    // 3. Scan / measurement — player is in a control room AND there's a started measurement
     for (const bl of this.beamlines) {
       const st = this.stDefs[bl.measKey];
-      if (!this.measSlots.some(s => s.blIdx === bl.idx && !s.toStage && s.started)) continue;
-      if (this.isPointInSt(st, this.px, this.py)) continue;
+      const playerInMeas = this.isPointInSt(st, this.px, this.py);
+      const hasActiveMeas = this.measSlots.some(s => s.blIdx === bl.idx && !s.toStage && s.started);
+      if (!playerInMeas || !hasActiveMeas) continue;
       if (this.postdocs.some(p => p !== pd && p.targetKey === bl.measKey)) continue;
-      candidates.push({ key: bl.measKey, x: st.boxCX, y: st.boxCY });
+      candidates.push({ key: bl.measKey, x: st.boxCX, y: st.boxCY,
+                        action: { type: 'scan', key: bl.measKey, blIdx: bl.idx } });
     }
+
+    // If postdoc is already working and its action is still valid, keep it
+    if (pd.state === 'working' && pd.assignedAction) {
+      const a = pd.assignedAction;
+      if (a.type === 'prep') {
+        if (this.prepSlotsFor[a.key]?.some(s => !s.toStage)) return { key: a.key, x: pd.targetX, y: pd.targetY, action: a };
+      } else if (a.type === 'expSetup') {
+        if (this.doingExpSetup && this.activeExpSetupIdx === a.blIdx) return { key: a.key, x: pd.targetX, y: pd.targetY, action: a };
+      } else if (a.type === 'scan') {
+        if (this.measSlots.some(s => s.blIdx === a.blIdx && !s.toStage && s.started)) return { key: a.key, x: pd.targetX, y: pd.targetY, action: a };
+      }
+      // Action is no longer valid — will fall through to null
+    }
+
+    if (!candidates.length) return null;
+    return candidates.sort((a, b) =>
+      Phaser.Math.Distance.Between(pd.x, pd.y, a.x, a.y) -
+      Phaser.Math.Distance.Between(pd.x, pd.y, b.x, b.y)
+    )[0];
+  }
+
+  // Level 2 AI: autonomous station-seeking — doesn't need the player present
+  _postdocTargetL2(pd) {
+    const candidates = [];
+
+    // 1. Prep rooms — any active prep slot (no player required)
+    for (const pk of this.prepKeys) {
+      const st = this.stDefs[pk];
+      const hasActiveSlot = this.prepSlotsFor[pk].some(s => !s.toStage);
+      if (!hasActiveSlot) continue;
+      if (this.postdocs.some(p => p !== pd && p.targetKey === pk)) continue;
+      candidates.push({ key: pk, x: st.x, y: st.y, action: { type: 'prep', key: pk } });
+    }
+
+    // 2. Experiment setup — player is doing setup (still needs player to initiate)
+    if (this.doingExpSetup && this.activeExpSetupIdx >= 0) {
+      const bl = this.beamlines[this.activeExpSetupIdx];
+      const st = this.stDefs[bl.lockKey];
+      const lk = bl.lockKey;
+      if (!this.postdocs.some(p => p !== pd && p.targetKey === lk)) {
+        candidates.push({ key: lk, x: st.boxCX, y: st.boxCY,
+                          action: { type: 'expSetup', key: lk, blIdx: bl.idx } });
+      }
+    }
+
+    // 3. Scan / measurement — any started measurement (no player required)
+    for (const bl of this.beamlines) {
+      const st = this.stDefs[bl.measKey];
+      const hasActiveMeas = this.measSlots.some(s => s.blIdx === bl.idx && !s.toStage && s.started);
+      if (!hasActiveMeas) continue;
+      if (this.postdocs.some(p => p !== pd && p.targetKey === bl.measKey)) continue;
+      candidates.push({ key: bl.measKey, x: st.boxCX, y: st.boxCY,
+                        action: { type: 'scan', key: bl.measKey, blIdx: bl.idx } });
+    }
+
+    // If postdoc is already working and its action is still valid, keep it
+    if (pd.state === 'working' && pd.assignedAction) {
+      const a = pd.assignedAction;
+      if (a.type === 'prep') {
+        if (this.prepSlotsFor[a.key]?.some(s => !s.toStage)) return { key: a.key, x: pd.targetX, y: pd.targetY, action: a };
+      } else if (a.type === 'expSetup') {
+        if (this.doingExpSetup && this.activeExpSetupIdx === a.blIdx) return { key: a.key, x: pd.targetX, y: pd.targetY, action: a };
+      } else if (a.type === 'scan') {
+        if (this.measSlots.some(s => s.blIdx === a.blIdx && !s.toStage && s.started)) return { key: a.key, x: pd.targetX, y: pd.targetY, action: a };
+      }
+    }
+
     if (!candidates.length) return null;
     return candidates.sort((a, b) =>
       Phaser.Math.Distance.Between(pd.x, pd.y, a.x, a.y) -
@@ -1365,25 +1529,26 @@ class GameScene extends Phaser.Scene {
 
   // ── HUD ───────────────────────────────────────────────────
   buildHUD() {
-    this.timerTxt=this.add.text(483,22,this.daysLeft(this.yearTimer),
+    this.timerTxt=this.add.text(GW/2,22,this.daysLeft(this.yearTimer),
       {font:'bold 20px Courier New',color:'#1a5a8a'}).setOrigin(0.5).setDepth(15);
-    this.cycleLbl=this.add.text(483,44,this.cycleLabel(),
+    this.cycleLbl=this.add.text(GW/2,44,this.cycleLabel(),
       {font:'12px Courier New',color:'#2a4a6a',letterSpacing:2}).setOrigin(0.5).setDepth(15);
 
-    this.repTxt =this.add.text(49,29,`⭐ ${this.reputation} rep`,
-      {font:'bold 15px Courier New',color:'#6a4d00'}).setOrigin(0.5).setDepth(15);
-    this.sampTxt=this.add.text(150,29,'⬡ 0 samples',
-      {font:'bold 15px Courier New',color:'#0a5a30'}).setOrigin(0.5).setDepth(15);
+    this.repTxt =this.add.text(20, 32,`⭐ ${this.reputation} rep`,
+      {font:'bold 14px Courier New',color:'#6a4d00'}).setOrigin(0, 0.5).setDepth(15);
+    this.sampTxt=this.add.text(125, 32,'⬡ 0 samples',
+      {font:'bold 14px Courier New',color:'#0a5a30'}).setOrigin(0, 0.5).setDepth(15);
+    this.invLabel=this.add.text(250, 32,`🧪 0/${MAX_HELD} held`,
+      {font:'bold 14px Courier New',color:'#1a5aaa'}).setOrigin(0, 0.5).setDepth(15);
+    this.destLabel=this.add.text(370, 32,'',
+      {font:'bold 13px Courier New',color:'#0a7a3a'}).setOrigin(0, 0.5).setDepth(15);
 
-    // Inventory counter in HUD
-    this.invLabel=this.add.text(256,29,`🧪 0/${MAX_HELD} held`,
-      {font:'bold 14px Courier New',color:'#1a5aaa'}).setOrigin(0.5).setDepth(15);
-
-    this.ringLbl=this.add.text(795,15,'RING STABILITY',
+    const ringX = GW - 175;
+    this.ringLbl=this.add.text(ringX,15,'RING STABILITY',
       {font:'12px Courier New',color:'#0a4a20',letterSpacing:1}).setDepth(15);
-    this.rBg  =this.add.rectangle(795,38,158,12,0xc4e0cc).setOrigin(0,0.5).setDepth(15);
-    this.rFill=this.add.rectangle(795,38,158,12,0x44bb44).setOrigin(0,0.5).setDepth(15);
-    this.rPct =this.add.text(874,38,'100%',
+    this.rBg  =this.add.rectangle(ringX,38,158,12,0xc4e0cc).setOrigin(0,0.5).setDepth(15);
+    this.rFill=this.add.rectangle(ringX,38,158,12,0x44bb44).setOrigin(0,0.5).setDepth(15);
+    this.rPct =this.add.text(ringX+79,38,'100%',
       {font:'bold 12px Courier New',color:'#1a3a1a'}).setOrigin(0.5).setDepth(15);
 
     this.setupLayoutMode();
@@ -1397,8 +1562,9 @@ class GameScene extends Phaser.Scene {
       { obj: this.cycleLbl, name: 'cycleLbl' },
       { obj: this.repTxt,   name: 'repTxt'   },
       { obj: this.sampTxt,  name: 'sampTxt'  },
-      { obj: this.invLabel, name: 'invLabel' },
-      { obj: this.ringLbl,  name: 'ringLbl'  },
+      { obj: this.invLabel,  name: 'invLabel'  },
+      { obj: this.destLabel, name: 'destLabel' },
+      { obj: this.ringLbl,   name: 'ringLbl'   },
       { obj: this.rBg,      name: 'rBg'      },
       { obj: this.rFill,    name: 'rFill'    },
       { obj: this.rPct,     name: 'rPct'     },
@@ -1475,13 +1641,13 @@ class GameScene extends Phaser.Scene {
   }
 
   spawnProposal() {
-    if(this.gamePaused||this.pending.length>=3) return;
+    if(this.gamePaused) return;
     const apps=getAvailableApps(this.year||1);
     const app=apps[Math.floor(Math.random()*apps.length)];
     const tech=this.beamlineTechs[Math.floor(Math.random()*this.beamlineTechs.length)];
     const n=Phaser.Math.Between(app.samples[0],app.samples[1]);
-    this.pending.push({name:app.name,tech,samples:n,rep:app.rep+(n-1)*8+Phaser.Math.Between(-3,3),timeLeft:PROPOSAL_LIFE});
-    this.refreshJobs();
+    this.pending.push({name:app.name,tech,samples:n,rep:app.rep+(n-1)*8+Phaser.Math.Between(-3,3),timeLeft:PROPOSAL_LIFE,labType:app.lab||'dry'});
+    this.restockProposalHub();
   }
 
   schedulePotentialBeamStop() {
@@ -1495,28 +1661,65 @@ class GameScene extends Phaser.Scene {
     }, [], this);
   }
 
+  restockProposalHub() {
+    while (this.active.length + this.commitQueue.length + this.pending.length < MAX_SLOTS) {
+      const apps=getAvailableApps(this.year||1);
+      const app=apps[Math.floor(Math.random()*apps.length)];
+      const tech=this.beamlineTechs[Math.floor(Math.random()*this.beamlineTechs.length)];
+      const n=Phaser.Math.Between(app.samples[0],app.samples[1]);
+      this.pending.push({name:app.name,tech,samples:n,rep:app.rep+(n-1)*8+Phaser.Math.Between(-3,3),timeLeft:PROPOSAL_LIFE,labType:app.lab||'dry'});
+    }
+    this.refreshJobs();
+  }
+
   // ── Accept pending proposal by clicking its slot ────────
   acceptProposalBySlot(slotIdx) {
     const slotData = this.jobSlots[slotIdx];
-    if (!slotData || slotData.linkedPendingIdx < 0) return; // Not a pending slot
-    
-    const pIdx = slotData.linkedPendingIdx;
+    if (!slotData) return;
     const effMax = MAX_ACTIVE + (this.upgrades.extraJobSlots||0);
-    if(this.active.length>=effMax){this.flash('All job slots full!','#ff4433');return;}
-    if(!this.pending[pIdx]) return;
-    
-    const p = this.pending.splice(pIdx,1)[0];
-    // Put it directly into this slot's array position, or push it if needed
-    // The visual slot is `i`, so we safely push it, and refreshJobs will resort
-    this.active.push({
-      id:this.jobIdCtr++, name:p.name, tech:p.tech,
-      totalSamples:p.samples, rep:p.rep,
-      done:0, unstarted:p.samples,
-      committed: false,   // rapid review — no rep penalty
-    });
-    this.refreshJobs(); 
-    this.refreshNPCs();
-    this.flash(`⚡ Rapid job accepted: ${p.name}`,'#0a8844');
+    if (this.active.length >= effMax) { this.flash('All job slots full!','#ff4433'); return; }
+
+    // Queued committed proposal (player-initiated activation)
+    if (slotData.linkedQueueIdx >= 0) {
+      const qIdx = slotData.linkedQueueIdx;
+      if (!this.commitQueue[qIdx]) return;
+      const freeSlot = this._claimNpcSlot();
+      if (freeSlot < 0) { this.flash('No free user slot!','#ff4433'); return; }
+      const p = this.commitQueue.splice(qIdx, 1)[0];
+      // commitQueue stores full job objects (built at game start) — reuse and re-roll durations
+      p.done = 0;
+      p.unstarted = p.totalSamples;
+      p.npcGone = false;
+      p.npcSlot = freeSlot;
+      this._rollJobDurations(p);
+      this.active.push(p);
+      this.refreshJobs();
+      this.refreshNPCs();
+      this.flash(`📋 ${p.name} started`, '#0a8844');
+      return;
+    }
+
+    // Rapid-review (ephemeral bonus) proposal
+    if (slotData.linkedPendingIdx >= 0) {
+      const pIdx = slotData.linkedPendingIdx;
+      if (!this.pending[pIdx]) return;
+      const freeSlot = this._claimNpcSlot();
+      if (freeSlot < 0) { this.flash('No free user slot!','#ff4433'); return; }
+      const p = this.pending.splice(pIdx, 1)[0];
+      const job = {
+        id: this.jobIdCtr++, name: p.name, tech: p.tech,
+        totalSamples: p.samples, rep: p.rep,
+        done: 0, unstarted: p.samples,
+        committed: false,   // rapid review — no rep penalty
+        labType: p.labType || 'dry',
+        npcSlot: freeSlot,
+      };
+      this._rollJobDurations(job);
+      this.active.push(job);
+      this.refreshJobs();
+      this.refreshNPCs();
+      this.flash(`⚡ Rapid job accepted: ${p.name}`, '#0a8844');
+    }
   }
 
   isPointInSt(st, px, py) {
@@ -1534,20 +1737,81 @@ class GameScene extends Phaser.Scene {
     return Phaser.Math.Distance.Between(px, py, st.x, st.y) < st.r;
   }
 
+  // Prevents characters from walking into the grey void
+  isValidPos(x, y, margin = 10) {
+    const dist = Phaser.Math.Distance.Between(x, y, this.CX, this.CY);
+    // 1. Cannot enter the inner storage ring
+    if (dist < this.RING_RAD + margin) return false;
+    // 2. Free movement inside the main circular corridor
+    if (dist <= this.PREP_RAD - margin) return true;
+    
+    // 3. Seamless movement within combined beamline rooms (Control Room + Hutch are 1 large box)
+    const ctrlLen = 60, ctrlWid = 76, hutchLen = 60, hutchWid = 76;
+    const pairLen = Math.max(ctrlLen, hutchLen);
+    const pairWid = ctrlWid + hutchWid; 
+
+    for (let i = 0; i < this.beamlineAngles.length; i++) {
+      const rad = Phaser.Math.DegToRad(this.beamlineAngles[i]);
+      const centerDist = this.PREP_RAD + pairLen/2 - 10;
+      const baseX = this.CX + Math.cos(rad) * centerDist;
+      const baseY = this.CY + Math.sin(rad) * centerDist;
+      
+      const w = pairLen / 2 - margin;
+      const h = pairWid / 2 - margin;
+      if (w <= 0 || h <= 0) continue;
+      
+      const dx = x - baseX;
+      const dy = y - baseY;
+      const cos = Math.cos(-rad);
+      const sin = Math.sin(-rad);
+      const lx = dx * cos - dy * sin;
+      const ly = dx * sin + dy * cos;
+      
+      // Extend the inner radial boundary inward by 80px to structurally bridge the gap 
+      // between the flat inner wall of the room and the circular outer wall of the corridor ring
+      if (lx >= -(w + 80) && lx <= w && Math.abs(ly) <= h) return true;
+    }
+    
+    // 4. Otherwise, must be inside one of the other interactive rooms (like Prep lab)
+    for (const k of Object.keys(this.stDefs)) {
+      const st = this.stDefs[k];
+      if (st.boxW === undefined) continue;
+      // Skip the beamline rooms we just checked collectively
+      if (st.type === 'meas' || st.type === 'exp_setup') continue;
+      
+      const w = st.boxW / 2 - margin;
+      const h = st.boxH / 2 - margin;
+      if (w <= 0 || h <= 0) continue;
+      
+      const dx = x - st.boxCX;
+      const dy = y - st.boxCY;
+      const cos = Math.cos(-st.boxRad);
+      const sin = Math.sin(-st.boxRad);
+      const lx = dx * cos - dy * sin;
+      const ly = dx * sin + dy * cos;
+      
+      if (Math.abs(lx) <= w && Math.abs(ly) <= h) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   // ── SPACE key interactions ────────────────────────────────
   tryInteract() {
     // 1. Collect from user NPC — only if actually near one
-    for(let i=0;i<MAX_SLOTS;i++){
-      const j=this.active[i];
-      if(!j||j.unstarted<=0) continue;
-      const pos=this.npcPos[i];
+    for (const j of this.active) {
+      if (j.unstarted<=0 || j.npcSlot<0) continue;
+      const pos=this.npcPos[j.npcSlot];
       const dist=Phaser.Math.Distance.Between(this.px,this.py,pos.x,pos.y);
       if(dist<this.npcR){
         if(this.held.length>=MAX_HELD){this.flash('Hands full — drop a sample at Prep Table first!','#ff4433');return;}
-        this.held.push({jobId:j.id,stage:'raw'});
+        const labIcon = j.labType === 'wet' ? '🧪' : '🔩';
+        const labName = j.labType === 'wet' ? 'Wet Lab' : 'Dry Lab';
+        this.held.push({jobId:j.id,stage:'raw',labType:j.labType||'dry'});
         j.unstarted--;
         this.refreshJobs(); this.refreshNPCs();
-        this.flash(`Sample collected from ${j.name} — deposit at Prep Table`,'#00dd88');
+        this.flash(`Sample collected from ${j.name} — deposit at ${labName} ${labIcon}`,'#00dd88');
         return;
       }
     }
@@ -1564,17 +1828,32 @@ class GameScene extends Phaser.Scene {
           const s=mySlots.splice(readyIdx,1)[0];
           this.held.push({jobId:s.jobId,stage:'prepped'});
           this.refreshJobs();
-          this.flash('Prepped sample collected — head to Experiment Setup then Measurement','#44aaff');
+          const _pj=this.active.find(a=>a.id===s.jobId);
+          const _tbl=_pj?this.beamlineTechs.indexOf(_pj.tech):-1;
+          const _tstr=_tbl>=0?`BL-${_tbl+1} (${_pj.tech})`:'matching beamline';
+          this.flash(`Prepped — head to ${_tstr} → Experiment Setup`,'#44aaff');
           return;
         }
         // 2b. Deposit a raw sample for processing
         const rawIdx=this.held.findIndex(h=>h.stage==='raw');
         if(rawIdx>=0){
+          // Check lab type match
+          const _rawItem = this.held[rawIdx];
+          const _rawJob = this.active.find(a => a.id === _rawItem.jobId);
+          const requiredLab = _rawItem.labType || _rawJob?.labType || 'dry';
+          if (this.stDefs[pk].labType !== requiredLab) {
+            const correctLab = requiredLab === 'wet' ? 'Wet Lab 🧪' : 'Dry Lab 🔩';
+            this.flash(`Wrong lab! This sample needs the ${correctLab}`, '#ff4433');
+            return;
+          }
           if(mySlots.length>=this.prepCap){
-            this.flash(`Prep lab busy (capacity ${this.prepCap}) — try the other one`,'#ff8833'); return;
+            this.flash(`${this.stDefs[pk].label} busy (capacity ${this.prepCap})`, '#ff8833'); return;
           }
           const item=this.held.splice(rawIdx,1)[0];
-          const prepDur = Phaser.Math.FloatBetween(DUR_PREP_MIN, DUR_PREP_MAX) * this._prepSpeed;
+          const _pJob = this.active.find(a => a.id === item.jobId);
+          const prepDur = (_pJob?.prepDurs?.length > 0)
+            ? _pJob.prepDurs.shift()
+            : Phaser.Math.FloatBetween(DUR_PREP_MIN, DUR_PREP_MAX) * this._prepSpeed;
           mySlots.push({jobId:item.jobId, remaining:prepDur*1000, total:prepDur*1000});
           this.refreshJobs(); this.refreshNPCs();
           this.flash('Sample deposited — prep in progress...','#44aaff');
@@ -1595,10 +1874,13 @@ class GameScene extends Phaser.Scene {
         });
         const blOccupied = this.measSlots.some(s => s.blIdx === bl.idx);
         if(prepIdx>=0 && this.activeExpSetupIdx < 0 && !blOccupied){
+          const _sJob = this.active.find(a => a.id === this.held[prepIdx].jobId);
           this.activeExpSetupIdx = bl.idx;
           this.doingExpSetup=true;
           this.expSetupProg=0;
-          this._durExpSetup = Phaser.Math.FloatBetween(DUR_EXP_SETUP_MIN, DUR_EXP_SETUP_MAX);
+          this._durExpSetup = (_sJob?.setupDurs?.length > 0)
+            ? _sJob.setupDurs.shift()
+            : Phaser.Math.FloatBetween(DUR_EXP_SETUP_MIN, DUR_EXP_SETUP_MAX);
           return;
         }
         // Has a prepped sample but wrong technique
@@ -1630,14 +1912,9 @@ class GameScene extends Phaser.Scene {
             this.cycleRepEarned += j.rep;
             this.repTxt.setText(`⭐ ${this.reputation} rep`);
             this.flash(`🎉 ${j.name} complete! +${j.rep} rep`,'#ffcc33');
+            this._releaseNpcSlot(j.npcSlot);
             this.active.splice(this.active.indexOf(j),1);
-            if (this.commitQueue && this.commitQueue.length > 0) {
-              const next = this.commitQueue.shift();
-              this.active.push(next);
-              this.flash(`🎉 ${j.name} done! +${j.rep} rep  ·  Next up: ${next.name}`, '#aa7700');
-            } else {
-              this.flash(`🎉 ${j.name} complete! +${j.rep} rep`, '#aa7700');
-            }
+            this.restockProposalHub();
           } else {
             this.flash(`${j.name}: ${j.done}/${j.totalSamples} done — collect next sample`,'#00dd88');
           }
@@ -1661,7 +1938,10 @@ class GameScene extends Phaser.Scene {
             this.flash(`BL-${bl.idx+1} busy (capacity ${this.measCap}) — wait or try another`,'#ff8833'); return;
           }
           const item=this.held.splice(lockIdx,1)[0];
-          const durMeas1 = Phaser.Math.FloatBetween(DUR_MEAS_MIN, DUR_MEAS_MAX) * this._measSpeed;
+          const _mJob1 = this.active.find(a => a.id === item.jobId);
+          const durMeas1 = (_mJob1?.measDurs?.length > 0)
+            ? _mJob1.measDurs.shift()
+            : Phaser.Math.FloatBetween(DUR_MEAS_MIN, DUR_MEAS_MAX) * this._measSpeed;
           this.measSlots.push({jobId:item.jobId, remaining:durMeas1*1000, total:durMeas1*1000, blIdx: bl.idx, started: false});
           this.redrawBeam();
           this.refreshJobs(); this.refreshNPCs();
@@ -1726,45 +2006,165 @@ class GameScene extends Phaser.Scene {
     if(this.cursors.down.isDown  ||this.wasd.down.isDown)  dy+=1;
     if(dx&&dy){dx*=0.707;dy*=0.707;}
 
-    // Free movement within the whole play area
-    let nx = Phaser.Math.Clamp(this.px + dx * this.SPD * dt, 14, this.PLAY_W - 14);
-    let ny = Phaser.Math.Clamp(this.py + dy * this.SPD * dt, this.HUD_H + 14, GH - 14);
-    
-    // Very basic collision against the INNER ring (cannot walk into the storage ring)
-    const distToCenter = Phaser.Math.Distance.Between(nx, ny, this.CX, this.CY);
-    if (distToCenter < this.RING_RAD + 10) {
-      // Push out radially
-      const angle = Phaser.Math.Angle.Between(this.CX, this.CY, nx, ny);
-      nx = this.CX + Math.cos(angle) * (this.RING_RAD + 10);
-      ny = this.CY + Math.sin(angle) * (this.RING_RAD + 10);
+    // Restrict movement to valid facility areas using slide-enabled collision
+    let stepX = dx * this.SPD * dt;
+    let stepY = dy * this.SPD * dt;
+
+    let tryMove = (sx, sy) => {
+      let nx = this.px + sx, ny = this.py + sy;
+      if (this.isValidPos(nx, ny, 12)) {
+        this.px = nx; this.py = ny;
+        return true;
+      }
+      return false;
+    };
+
+    if (stepX !== 0 || stepY !== 0) {
+      if (!tryMove(stepX, stepY)) {
+        // Failed full vector. Try strictly horizontal or vertical
+        let movedX = stepX !== 0 && tryMove(stepX, 0);
+        let movedY = stepY !== 0 && tryMove(0, stepY);
+        
+        // Auto-slide: if we pressed ONLY one axis against a diagonal wall and it failed,
+        // synthesize the diagonal vector perfectly along the 45-degree angle
+        if (!movedX && !movedY) {
+          if (stepX === 0 && stepY !== 0) {
+            if (!tryMove(Math.abs(stepY), stepY)) tryMove(-Math.abs(stepY), stepY);
+          } else if (stepY === 0 && stepX !== 0) {
+            if (!tryMove(stepX, Math.abs(stepX))) tryMove(stepX, -Math.abs(stepX));
+          }
+        }
+      }
     }
 
-    this.px=nx; this.py=ny;
     this.pCon.setPosition(this.px,this.py);
     this.updatePostdocs(delta);
 
     // ── Inventory dot display ──
     this.invLabel.setText(`🧪 ${this.held.length}/${MAX_HELD} held`);
+    // Destination hint
+    if (this.destLabel) {
+      const raw     = this.held.find(h => h.stage === 'raw');
+      const prepped = this.held.find(h => h.stage === 'prepped');
+      const done    = this.held.find(h => h.stage === 'exp_setup_done');
+      if (raw) {
+        const labType = raw.labType || 'dry';
+        const labIcon = labType === 'wet' ? '🧪' : '🔩';
+        const labName = labType === 'wet' ? 'Wet Lab' : 'Dry Lab';
+        const labCol  = labType === 'wet' ? '#2266cc' : '#8a6a10';
+        this.destLabel.setText(`→ ${labName} ${labIcon}`).setStyle({color: labCol});
+      } else if (prepped) {
+        const pj = this.active.find(a => a.id === prepped.jobId);
+        const bi = pj ? this.beamlineTechs.indexOf(pj.tech) : -1;
+        this.destLabel.setText(bi >= 0 ? `→ BL-${bi+1} Exp. Setup` : '').setStyle({color: bi >= 0 ? BL_TXT[bi] : '#888888'});
+      } else if (done) {
+        const bi = done.expBlIdx;
+        this.destLabel.setText(`→ BL-${bi+1} Control Room`).setStyle({color: BL_TXT[bi] ?? '#888888'});
+      } else {
+        this.destLabel.setText('');
+      }
+    }
     for(let i=0;i<MAX_HELD;i++){
       const item=this.held[i];
       const {d,t}=this.invDots[i];
       if(item){
-        // Find job index for colour
-        const jIdx=this.active.findIndex(a=>a.id===item.jobId);
-        const col=jIdx>=0?JOB_HEX[jIdx]:0xaaaaaa;
-        const stageIcon={raw:'R',prepped:'P',exp_setup_done:'🔒'}[item.stage]||'?';
-        d.setPosition(this.px-12+i*14,this.py-26).setFillStyle(col).setVisible(true);
+        // Colour by target beamline (so dot matches the BL label on the map)
+        const _ij = this.active.find(a => a.id === item.jobId);
+        let _blCol = 0xaaaaaa;
+        if (_ij) {
+          const _bi = item.stage === 'exp_setup_done' && item.expBlIdx !== undefined
+            ? item.expBlIdx
+            : this.beamlineTechs.indexOf(_ij.tech);
+          if (_bi >= 0) _blCol = BL_HEX[_bi];
+        }
+        let stageIcon;
+        if (item.stage === 'raw') {
+          const lt = item.labType || 'dry';
+          stageIcon = lt === 'wet' ? 'W' : 'D';
+          // Colour raw sample dots by lab type
+          _blCol = lt === 'wet' ? 0x2266cc : 0xaa8822;
+        } else {
+          stageIcon = {prepped:'P',exp_setup_done:'🔒'}[item.stage]||'?';
+        }
+        d.setPosition(this.px-12+i*14,this.py-26).setFillStyle(_blCol).setVisible(true);
         t.setPosition(this.px-12+i*14,this.py-26).setText(stageIcon).setVisible(true);
       } else {
         d.setVisible(false); t.setVisible(false);
       }
     }
 
+    // ── Pulsing destination highlight on target hutch / control room / prep lab ──
+    if (this.roomHighlightG) {
+      this.roomHighlightG.clear();
+      const pulse = Math.sin(this.time.now / 280) * 0.5 + 0.5; // 0..1
+      const alpha = 0.12 + pulse * 0.28;                        // 0.12..0.40
+      for (const item of this.held) {
+        const job = this.active.find(a => a.id === item.jobId);
+        if (!job) continue;
+        let targetKey = null;
+        let blIdx = -1;
+        let col = 0x00ccff;
+        if (item.stage === 'raw') {
+          // Highlight the correct prep lab
+          const lt = item.labType || 'dry';
+          targetKey = lt === 'wet' ? 'prep' : 'prep2';
+          col = lt === 'wet' ? 0x2266cc : 0xaa8822;
+          // Prep stations are small boxes, draw directly
+          const st = this.stDefs[targetKey];
+          if (st) {
+            this.roomHighlightG.fillStyle(col, alpha);
+            this.roomHighlightG.fillRoundedRect(st.x - st.w/2 - 4, st.y - st.h/2 - 4, st.w + 8, st.h + 8, 8);
+            this.roomHighlightG.lineStyle(2, col, alpha + 0.2);
+            this.roomHighlightG.strokeRoundedRect(st.x - st.w/2 - 4, st.y - st.h/2 - 4, st.w + 8, st.h + 8, 8);
+          }
+          continue;
+        } else if (item.stage === 'prepped') {
+          blIdx = this.beamlineTechs.indexOf(job.tech);
+          if (blIdx >= 0) targetKey = `exp_setup_${blIdx}`;
+          col = blIdx >= 0 ? BL_HEX[blIdx] : 0x00ccff;
+        } else if (item.stage === 'exp_setup_done' && item.expBlIdx !== undefined) {
+          blIdx = item.expBlIdx;
+          targetKey = `meas_${blIdx}`;
+          col = blIdx >= 0 ? BL_HEX[blIdx] : 0x00ccff;
+        }
+        if (!targetKey) continue;
+        const geo = this.roomGeo.find(r => r.key === targetKey);
+        if (!geo) continue;
+        const { cx, cy, w, h, rad } = geo;
+        const cos = Math.cos(rad), sin = Math.sin(rad);
+        const corners = [[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]]
+          .map(([x,y]) => ({ x: cx + x*cos - y*sin, y: cy + x*sin + y*cos }));
+        this.roomHighlightG.fillStyle(col, alpha);
+        this.roomHighlightG.fillTriangle(
+          corners[0].x, corners[0].y, corners[1].x, corners[1].y, corners[2].x, corners[2].y);
+        this.roomHighlightG.fillTriangle(
+          corners[0].x, corners[0].y, corners[2].x, corners[2].y, corners[3].x, corners[3].y);
+      }
+    }
+
+    // ── Beamline user NPC leave timers ──
+    for (const j of this.active) {
+      if (j.npcGone || j.leaveMs === undefined || j.npcSlot < 0) continue;
+      const npc = this.npcs[j.npcSlot];
+      if (!npc) continue;
+      // Only tick down while uncollected samples remain; freeze bar once all collected
+      if (j.unstarted > 0) {
+        j.leaveMs -= delta;
+        if (j.leaveMs <= 0) { this.userNpcLeaves(j); continue; }
+      }
+      const frac = 1 - Math.max(0, j.leaveMs) / j.leaveMsTotal;
+      const col = frac > 0.75 ? 0xff4433 : frac > 0.5 ? 0xffaa33 : 0x44cc88;
+      npc.leaveBarFill.setDisplaySize(Math.max(1, 28 * frac), 4).setFillStyle(col);
+    }
+
     // ── Experiment setup progress (player holds Space near hutch with prepped sample) ──
     if (this.doingExpSetup && this.activeExpSetupIdx >= 0) {
       const bl = this.beamlines[this.activeExpSetupIdx];
       const lock = this.stDefs[bl.lockKey];
-      const nearLock = this.isPointInSt(lock, this.px, this.py);
+      const nearLock = this.isPointInSt(lock, this.px, this.py)
+        || this.postdocs.some(pd => pd.state === 'working'
+            && pd.assignedAction?.type === 'expSetup'
+            && pd.assignedAction?.blIdx === this.activeExpSetupIdx);
       const hasPrepped=this.held.some(h=>h.stage==='prepped');
 
       if(nearLock&&hasPrepped){
@@ -1779,7 +2179,10 @@ class GameScene extends Phaser.Scene {
             if (activeAtBL < this.measCap) {
               // Auto-deposit into measurement
               const item = this.held.splice(idx, 1)[0];
-              const durMeas2 = Phaser.Math.FloatBetween(DUR_MEAS_MIN, DUR_MEAS_MAX) * this._measSpeed;
+              const _mJob2 = this.active.find(a => a.id === item.jobId);
+              const durMeas2 = (_mJob2?.measDurs?.length > 0)
+                ? _mJob2.measDurs.shift()
+                : Phaser.Math.FloatBetween(DUR_MEAS_MIN, DUR_MEAS_MAX) * this._measSpeed;
               this.measSlots.push({jobId:item.jobId, remaining:durMeas2*1000, total:durMeas2*1000, blIdx: finishedBl, started: false});
               this.redrawBeam();
               this.flash(`Sample loaded at BL-${finishedBl+1} — go to Control Room and press [Space] to measure`,'#44ccff');
@@ -1828,11 +2231,13 @@ class GameScene extends Phaser.Scene {
     }
 
     // ── NPC ring highlight ──
-    for(let i=0;i<MAX_SLOTS;i++){
-      const j=this.active[i];
-      if(!j||j.unstarted<=0){if(this.npcs[i])this.npcs[i].ring.setStrokeStyle(1.5,JOB_HEX[i],0.3);continue;}
-      const dist=Phaser.Math.Distance.Between(this.px,this.py,this.npcPos[i].x,this.npcPos[i].y);
-      if(this.npcs[i])this.npcs[i].ring.setStrokeStyle(dist<this.npcR?2.5:1.5,JOB_HEX[i],dist<this.npcR?0.9:0.4);
+    for (let i = 0; i < MAX_SLOTS; i++) {
+      const npc = this.npcs[i];
+      if (!npc) continue;
+      const j = this.active.find(a => a.npcSlot === i);
+      if (!j || j.unstarted <= 0) { npc.ring.setStrokeStyle(1.5, JOB_HEX[i], 0.3); continue; }
+      const dist = Phaser.Math.Distance.Between(this.px, this.py, this.npcPos[i].x, this.npcPos[i].y);
+      npc.ring.setStrokeStyle(dist < this.npcR ? 2.5 : 1.5, JOB_HEX[i], dist < this.npcR ? 0.9 : 0.4);
     }
 
     // ── Proximity prompt ──
@@ -1873,10 +2278,19 @@ class GameScene extends Phaser.Scene {
       const prep=this.stDefs[pk];
       const mySlots=this.prepSlotsFor[pk];
       if(this.isPointInSt(prep, this.px, this.py)){
-        if(this.held.some(h=>h.stage==='raw')&&mySlots.length<this.prepCap) return '[Space] Deposit sample for prep';
-        if(mySlots.some(s=>s.toStage==='prepped_ready')) return '[Space] Pick up prepped sample ✅';
-        if(mySlots.length>=this.prepCap) return `Prep lab busy — try the other one`;
-        return 'Sample prep lab';
+        const labLabel = this.stDefs[pk].label;
+        // Check if player has a matching raw sample
+        const hasMatchingRaw = this.held.some(h => {
+          if (h.stage !== 'raw') return false;
+          const reqLab = h.labType || 'dry';
+          return reqLab === this.stDefs[pk].labType;
+        });
+        const hasAnyRaw = this.held.some(h => h.stage === 'raw');
+        if(mySlots.some(s=>s.toStage==='prepped_ready')) return `[Space] Pick up prepped sample ✅`;
+        if(hasMatchingRaw && mySlots.length<this.prepCap) return `[Space] Deposit sample for prep`;
+        if(hasAnyRaw && !hasMatchingRaw) return `Wrong lab — check sample type`;
+        if(mySlots.length>=this.prepCap) return `${labLabel} busy`;
+        return labLabel;
       }
     }
     
@@ -1943,7 +2357,7 @@ class GameScene extends Phaser.Scene {
         const total = s.total || (isMeas ? (DUR_MEAS_MIN+DUR_MEAS_MAX)/2*1000 : (DUR_PREP_MIN+DUR_PREP_MAX)/2*1000);
         const frac = Math.min(1, Math.max(0, (total - Math.max(0, s.remaining)) / total));
         const paused = !playerNear && started;
-        const label = isMeas ? `BL-${blIdx+1}` : 'PREP';
+        const label = isMeas ? `ACQUIRING DATA` : 'PREP';
         bar.setFraction(frac)
            .setFillStyle(!started ? 0x8899aa : paused ? 0xccaa44 : 0x44ccaa)
            .setLabel(label, '#1a3a5a')
@@ -1983,9 +2397,65 @@ class GameScene extends Phaser.Scene {
   fmt(s){return `${Math.floor(s/60)}:${String(Math.max(0,s%60)).padStart(2,'0')}`;}
 
   flash(msg,color='#1a7a3a'){
+    if (!this.flashTxt || !this.flashBg) return;
     this.statusTxt.setText(msg).setStyle({color});
     if(this._ft) this._ft.remove();
     this._ft=this.time.delayedCall(2800,()=>this.statusTxt.setText(''));
+  }
+
+  // Claim the first free NPC slot index for a newly-activated job
+  _claimNpcSlot() {
+    for (let i = 0; i < this.npcSlotUsed.length; i++) {
+      if (!this.npcSlotUsed[i]) { this.npcSlotUsed[i] = true; return i; }
+    }
+    return -1;
+  }
+
+  _releaseNpcSlot(i) {
+    if (i >= 0 && i < this.npcSlotUsed.length) this.npcSlotUsed[i] = false;
+  }
+
+  // Pre-roll all processing durations for a job and compute its precise leave window.
+  // Called once when the job enters active. Durations are consumed in order as samples
+  // are processed, so the leave timer reflects exactly the work this proposal requires.
+  _rollJobDurations(job) {
+    job.prepDurs  = [];
+    job.setupDurs = [];
+    job.measDurs  = [];
+    let totalSec = 0;
+    for (let k = 0; k < job.totalSamples; k++) {
+      const prep  = Phaser.Math.FloatBetween(DUR_PREP_MIN,  DUR_PREP_MAX)  * this._prepSpeed;
+      const setup = Phaser.Math.FloatBetween(DUR_EXP_SETUP_MIN, DUR_EXP_SETUP_MAX);
+      const meas  = Phaser.Math.FloatBetween(DUR_MEAS_MIN,  DUR_MEAS_MAX)  * this._measSpeed;
+      job.prepDurs.push(prep);
+      job.setupDurs.push(setup);
+      job.measDurs.push(meas);
+      totalSec += prep + setup + meas;
+    }
+    job.leaveMsTotal = totalSec * 2.5 * 1000;  // ×2.5 overhead for player movement between stations
+    job.leaveMs      = job.leaveMsTotal;
+  }
+
+  userNpcLeaves(j) {
+    const lost = j.unstarted;
+    const originalTotal = j.totalSamples;
+    j.unstarted = 0;
+    j.npcGone   = true;
+    // Shrink totalSamples to what was actually collected — lets normal completion fire
+    // once the in-flight samples finish processing
+    j.totalSamples = originalTotal - lost;
+    // Rep penalty: proportional to fraction of samples abandoned
+    const repLoss = Math.max(1, Math.round(lost / originalTotal * j.rep * 0.5));
+    this.reputation = Math.max(0, this.reputation - repLoss);
+    this.repTxt.setText(`⭐ ${this.reputation} rep`);
+    // Free the NPC slot — queued proposals do NOT auto-promote; player must accept via right panel
+    this._releaseNpcSlot(j.npcSlot);
+    j.npcSlot = -1;
+    // If no samples were ever collected, remove the job entirely
+    if (j.totalSamples <= 0) this.active.splice(this.active.indexOf(j), 1);
+    this.flash(`${j.name}'s user left — ${lost} sample${lost>1?'s':''} lost  −${repLoss} rep`, '#ff4433');
+    this.refreshNPCs();
+    this.refreshJobs();
   }
 
   endYear(){
@@ -2029,7 +2499,7 @@ class ProposalReviewScene extends Phaser.Scene {
     this.reputation  = (d&&d.reputation)  || 0;
     this.ringBase    = (d&&d.ringBase)    || 100;
     this.funding     = (d&&d.funding)     !== undefined ? d.funding : 400;
-    this.upgrades    = (d&&d.upgrades)    || {prepCap:1,measCap:1,prepSpeed:1.0,measSpeed:1.0,extraJobSlots:0,ringMaint:false};
+    this.upgrades    = (d&&d.upgrades)    || {prepCap:1,measCap:1,prepSpeed:1.0,measSpeed:1.0,extraJobSlots:0,postdocs:0,postdocLevel:1,ringMaint:false};
     // Beamline technique assignment: shuffled once per run, persists across cycles
     if (d && d.beamlineTechs) {
       this.beamlineTechs = d.beamlineTechs;
@@ -2040,7 +2510,7 @@ class ProposalReviewScene extends Phaser.Scene {
 
   create() {
     this.selected = [];   // indices of selected proposals
-    this.proposals = this.generateProposals(6);
+    this.proposals = this.generateProposals(8);
 
     // Background
     const g = this.add.graphics();
@@ -2049,30 +2519,30 @@ class ProposalReviewScene extends Phaser.Scene {
     g.fillStyle(0x00aacc,0.3); g.fillRect(0,62,GW,2);
 
     // Header
-    this.add.text(GW/2, 20, 'THE BRILLIANT FACILITY',
-      {font:'bold 22px Courier New', color:'#0d3a8a'}).setOrigin(0.5);
-    this.add.text(GW/2, 42, `CYCLE ${this.cycleInYear} / YEAR ${this.year}  —  PROPOSAL REVIEW`,
-      {font:'12px Courier New', color:'#2a5a8a', letterSpacing:2}).setOrigin(0.5);
+    this.add.text(GW/2, 24, 'THE BRILLIANT FACILITY',
+      {font:'bold 26px Courier New', color:'#0d3a8a'}).setOrigin(0.5);
+    this.add.text(GW/2, 48, `CYCLE ${this.cycleInYear} / YEAR ${this.year}  —  PROPOSAL REVIEW`,
+      {font:'bold 14px Courier New', color:'#2a5a8a', letterSpacing:2}).setOrigin(0.5);
 
     // Rep + ring info
     this.add.text(40, 32, `⭐ ${this.reputation} rep`,
-      {font:'bold 14px Courier New', color:'#b38600'}).setOrigin(0,0.5);
-    this.add.text(GW*3/4, 32, `💰 ${this.funding} funding`,
-      {font:'bold 14px Courier New', color:'#7a5000'}).setOrigin(0.5,0.5);
+      {font:'bold 16px Courier New', color:'#b38600'}).setOrigin(0,0.5);
+    this.add.text(GW/2 + 250, 32, `💰 ${this.funding} funding`,
+      {font:'bold 16px Courier New', color:'#7a5000'}).setOrigin(0.5,0.5);
     this.add.text(GW-40, 32, `Ring ${Math.round(this.ringBase)}%`,
-      {font:'bold 14px Courier New', color:this.ringBase>60?'#1a6a2a':this.ringBase>30?'#aa5500':'#cc1100'}).setOrigin(1,0.5);
+      {font:'bold 16px Courier New', color:this.ringBase>60?'#1a6a2a':this.ringBase>30?'#aa5500':'#cc1100'}).setOrigin(1,0.5);
 
     // Instruction
-    this.add.text(GW/2, 78,
+    this.add.text(GW/2, 85,
       'Select any proposals to commit this cycle. Only 3 run simultaneously — extras queue up. Unfinished commitments cost reputation.',
-      {font:'12px Courier New', color:'#4a5a6a', align:'center'}).setOrigin(0.5);
+      {font:'14px Courier New', color:'#2a3a4a', align:'center'}).setOrigin(0.5);
 
-    // Proposal cards — 2 rows × 3 cols
+    // Proposal cards — 2 rows × 4 cols
     this.cards = [];
-    const cols = 3, rows = 2;
-    const cw = 240, ch = 162, pad = 20;
+    const cols = 4, rows = 2;
+    const cw = 270, ch = 200, pad = 24;
     const startX = (GW - (cols*cw + (cols-1)*pad)) / 2 + cw/2;
-    const startY = 190;
+    const startY = 220;
 
     for (let i = 0; i < this.proposals.length; i++) {
       const col = i % cols, row = Math.floor(i / cols);
@@ -2099,30 +2569,36 @@ class ProposalReviewScene extends Phaser.Scene {
       const rep = app.rep + (samples-1)*8 + Phaser.Math.Between(-3,3);
       // Penalty for 0 done: proportional to rep value
       const penalty = Math.round(rep * 0.35);
-      out.push({ name:app.name, tech, samples, rep, penalty });
+      out.push({ name:app.name, tech, samples, rep, penalty, labType: app.lab || 'dry' });
     }
     return out;
   }
 
   buildCard(idx, cx, cy, cw, ch) {
     const p = this.proposals[idx];
+    const blIdx = this.beamlineTechs.indexOf(p.tech);
+    const blCol = blIdx >= 0 ? BL_HEX[blIdx] : 0x888888;
+    const blTxt = blIdx >= 0 ? BL_TXT[blIdx] : '#4a5a6a';
+    const labIcon = p.labType === 'wet' ? '🧪' : '🔩';
 
     const bg   = this.add.rectangle(cx, cy, cw, ch, 0xfafcff).setStrokeStyle(1, 0xaabbcc);
     const sel  = this.add.rectangle(cx, cy, cw, ch, 0x1a6aaa, 0).setStrokeStyle(0);
-    const name = this.add.text(cx, cy-52, p.name,
-      {font:'bold 14px Courier New', color:'#1a5a8a', wordWrap:{width:cw-20}, align:'center'}).setOrigin(0.5);
-    const tech = this.add.text(cx, cy-32, p.tech,
-      {font:'12px Courier New', color:'#2a5a6a', wordWrap:{width:cw-20}, align:'center'}).setOrigin(0.5);
+    // Left accent stripe matching beamline color
+    const accent = this.add.rectangle(cx - cw/2 + 3, cy, 6, ch - 8, blCol).setOrigin(0.5);
+    const name = this.add.text(cx, cy-60, `${labIcon} ${p.name}`,
+      {font:'bold 18px Courier New', color:'#1a5a8a', wordWrap:{width:cw-30}, align:'center'}).setOrigin(0.5);
+    const tech = this.add.text(cx, cy-34, `${p.tech}${blIdx >= 0 ? ` (BL-${blIdx+1})` : ''}`,
+      {font:'bold 14px Courier New', color:blTxt, wordWrap:{width:cw-20}, align:'center'}).setOrigin(0.5);
 
-    const repTxt = this.add.text(cx-cw/2+12, cy-12, `⭐ +${p.rep} rep`,
-      {font:'bold 12px Courier New', color:'#b38600'});
-    const batchTxt = this.add.text(cx-cw/2+12, cy+6, `📦 ${p.samples} sample${p.samples>1?'s':''}`,
-      {font:'12px Courier New', color:'#0a8a5a'});
-    const penTxt = this.add.text(cx-cw/2+12, cy+24, `⚠ −${p.penalty} rep if 0 done`,
-      {font:'11px Courier New', color:'#aa3300'});
+    const repTxt = this.add.text(cx-cw/2+24, cy-8, `⭐ +${p.rep} rep`,
+      {font:'bold 14px Courier New', color:'#b38600'});
+    const batchTxt = this.add.text(cx-cw/2+24, cy+14, `📦 ${p.samples} sample${p.samples>1?'s':''}`,
+      {font:'bold 14px Courier New', color:'#0a8a5a'});
+    const penTxt = this.add.text(cx-cw/2+24, cy+36, `⚠ −${p.penalty} rep if 0 done`,
+      {font:'bold 13px Courier New', color:'#aa3300'});
 
-    const tick = this.add.text(cx+cw/2-14, cy-50, '',
-      {font:'bold 16px Courier New', color:'#1a8a3a'}).setOrigin(0.5);
+    const tick = this.add.text(cx+cw/2-24, cy-60, '',
+      {font:'bold 24px Courier New', color:'#1a8a3a'}).setOrigin(0.5);
 
     // Click to select/deselect
     bg.setInteractive({useHandCursor:true});
@@ -2132,7 +2608,7 @@ class ProposalReviewScene extends Phaser.Scene {
     sel.setInteractive({useHandCursor:true});
     sel.on('pointerdown', () => this.toggleCard(idx));
 
-    this.cards.push({bg, sel, name, tech, repTxt, batchTxt, penTxt, tick});
+    this.cards.push({bg, sel, name, tech, repTxt, batchTxt, penTxt, tick, accent});
   }
 
   toggleCard(idx) {
@@ -2193,7 +2669,7 @@ class CycleEndScene extends Phaser.Scene {
     this.d = d;
     this.upgrades = JSON.parse(JSON.stringify(d.upgrades || {
       prepCap:1, measCap:1, prepSpeed:1.0, measSpeed:1.0,
-      extraJobSlots:0, ringMaint:false,
+      extraJobSlots:0, postdocs:0, postdocLevel:1, ringMaint:false,
     }));
     // Calculate available funding
     const isYearEnd = d.cycleInYear === 3;
@@ -2232,22 +2708,24 @@ class CycleEndScene extends Phaser.Scene {
     ];
     stats.forEach(([k,v],i)=>{
       this.add.text(LX,    SY+22+i*20, k, {font:'13px Courier New',color:'#3a5a7a'});
-      this.add.text(LX+160,SY+22+i*20, v, {font:'bold 13px Courier New',color:'#0d2a4a'});
+      const valTxt = this.add.text(LX+160,SY+22+i*20, v, {font:'bold 13px Courier New',color:'#0d2a4a'});
+      if (i === 1) this.repValTxt = valTxt; // reputation row — keep ref for live update
     });
+
+    let nextY = SY + 90;
 
     // Penalties
     if(d.penalties&&d.penalties.length>0){
-      let py=SY+90;
-      this.add.text(LX,py,'Unfulfilled:',{font:'12px Courier New',color:'#cc2200'});
+      this.add.text(LX,nextY,'Unfulfilled:',{font:'12px Courier New',color:'#cc2200'});
       d.penalties.forEach((p,i)=>
-        this.add.text(LX+110,py+i*14,`${p.name} ${p.penalty} rep`,
+        this.add.text(LX+110,nextY+i*14,`${p.name} ${p.penalty} rep`,
           {font:'12px Courier New',color:'#cc4422'}));
+      nextY += 20 + d.penalties.length * 14;
     }
 
     // Cycle analytics (auto-instrumentation)
     if (d.proposalsDone !== undefined) {
-      const aY = SY + 88;
-      this.add.text(LX, aY, '── CYCLE ANALYTICS ──',
+      this.add.text(LX, nextY, '── CYCLE ANALYTICS ──',
         {font:'10px Courier New', color:'#6a9abb', letterSpacing:1});
       const effTime   = d.yearSamples > 0 ? (CYCLE_SEC / d.yearSamples).toFixed(1) : '—';
       const repPerSmp = d.yearSamples > 0 ? ((d.repEarned||0) / d.yearSamples).toFixed(1) : '—';
@@ -2256,8 +2734,9 @@ class CycleEndScene extends Phaser.Scene {
         `${effTime}s/samp  ·  ${repPerSmp} rep/samp`,
       ];
       aRows.forEach((v, i) => {
-        this.add.text(LX, aY+14+i*16, v, {font:'bold 11px Courier New', color:'#0d2a4a'});
+        this.add.text(LX, nextY+14+i*16, v, {font:'bold 11px Courier New', color:'#0d2a4a'});
       });
+      nextY += 14 + aRows.length * 16 + 18;
     }
 
     // Paper outcome
@@ -2269,13 +2748,88 @@ class CycleEndScene extends Phaser.Scene {
       {min:0,txt:'❌ No publication'},
     ];
     const out=outcomes.find(o=>d.yearSamples>=o.min);
-    this.add.text(LX,SY+160,out.txt,{font:'13px Courier New',color:'#6a4400'});
+    this.add.text(LX,nextY,out.txt,{font:'13px Courier New',color:'#6a4400'});
+    nextY += 28;
 
     // New year funding banner
     if(this.newFundingMsg){
-      const fb = this.add.rectangle(LX-8,SY+188,320,26,0xfef8e0).setOrigin(0,0).setStrokeStyle(1,0xccaa44);
-      this.add.text(LX+4,SY+199,this.newFundingMsg,{font:'12px Courier New',color:'#7a5500'}).setOrigin(0,0.5);
+      const fb = this.add.rectangle(LX-8,nextY,320,26,0xfef8e0).setOrigin(0,0).setStrokeStyle(1,0xccaa44);
+      this.add.text(LX+4,nextY+11,this.newFundingMsg,{font:'12px Courier New',color:'#7a5500'}).setOrigin(0,0.5);
+      nextY += 40;
     }
+
+    // ── BETWEEN-CYCLE ACTION CHOICE ──────────────────────────
+    const AY = nextY;
+    this.add.text(LX, AY, 'BETWEEN-CYCLE ACTION', {font:'bold 13px Courier New',color:'#2a5a8a',letterSpacing:2});
+    this.add.text(LX, AY+16, 'Choose one action before continuing:', {font:'11px Courier New',color:'#5a7a9a'});
+
+    this.actionChosen = false;
+    const repGain = Math.min(30, 10 + (d.yearSamples || 0) * 2);
+    const hasPostdoc = (this.upgrades.postdocs || 0) > 0;
+    const pdLevel = this.upgrades.postdocLevel || 1;
+    const canTrain = hasPostdoc && pdLevel < 2;
+
+    const actions = [
+      {
+        key: 'paper', icon: '📄', label: 'Write Paper',
+        desc: `+${repGain} reputation`,
+        available: true,
+        apply: () => {
+          this.d.reputation = (this.d.reputation || 0) + repGain;
+          if (this.repValTxt) this.repValTxt.setText(`⭐ ${this.d.reputation}`).setStyle({color:'#0a8a2a'});
+          return `✓ Paper published! +${repGain} rep (now ${this.d.reputation})`;
+        }
+      },
+      {
+        key: 'train', icon: '🎓', label: 'Train Postdoc',
+        desc: hasPostdoc ? (canTrain ? `Level ${pdLevel} → ${pdLevel+1} (autonomous)` : `Already Level ${pdLevel} (max)`) : 'No postdoc hired',
+        available: canTrain,
+        apply: () => {
+          this.upgrades.postdocLevel = (this.upgrades.postdocLevel || 1) + 1;
+          return `✓ Postdoc trained to Level ${this.upgrades.postdocLevel}!`;
+        }
+      },
+    ];
+
+    this.actionCards = [];
+    const CW = 145, CH = 90;
+    actions.forEach((act, i) => {
+      const cx = LX + i * (CW + 12);
+      const cy = AY + 42;
+      const bg = this.add.rectangle(cx, cy, CW, CH, act.available ? 0xfafcff : 0xeeeeee)
+        .setOrigin(0, 0).setStrokeStyle(1, act.available ? 0xaabbcc : 0xcccccc);
+      const icon = this.add.text(cx + CW/2, cy + 16, act.icon, {font:'24px Courier New'}).setOrigin(0.5);
+      const lbl = this.add.text(cx + CW/2, cy + 42, act.label, {font:'bold 12px Courier New', color: act.available ? '#1a5a8a' : '#999999'}).setOrigin(0.5);
+      const dsc = this.add.text(cx + CW/2, cy + 58, act.desc, {font:'10px Courier New', color: act.available ? '#2a7a3a' : '#999999', wordWrap:{width:CW-10}, align:'center'}).setOrigin(0.5, 0);
+      const result = this.add.text(cx + CW/2, cy + CH + 6, '', {font:'bold 10px Courier New', color:'#0a8a5a'}).setOrigin(0.5);
+
+      if (act.available) {
+        bg.setInteractive({useHandCursor:true});
+        bg.on('pointerover', () => { if (!this.actionChosen) bg.setFillStyle(0xd0e4f8); });
+        bg.on('pointerout', () => { if (!this.actionChosen) bg.setFillStyle(0xfafcff); });
+        bg.on('pointerdown', () => {
+          if (this.actionChosen) return;
+          this.actionChosen = true;
+          const msg = act.apply();
+          result.setText(msg);
+          bg.setFillStyle(0xd0f0d0).setStrokeStyle(2, 0x2a9a2a);
+          // Gray out the other card
+          this.actionCards.forEach((c, j) => {
+            if (j === i) return;
+            c.bg.setFillStyle(0xeeeeee).setStrokeStyle(1, 0xcccccc);
+            c.lbl.setStyle({color:'#999999'});
+            c.icon.setAlpha(0.4);
+          });
+          // Enable continue button
+          this.contBtn.setText('[ CONTINUE TO PROPOSAL REVIEW ]').setStyle({color:'#0a7a44'});
+          this.contBtn.setInteractive({useHandCursor:true});
+          this.contBtn.on('pointerover',()=>this.contBtn.setStyle({color:'#0a9a55'}));
+          this.contBtn.on('pointerout', ()=>this.contBtn.setStyle({color:'#0a7a44'}));
+          this.contBtn.on('pointerdown',()=>this.nextScene());
+        });
+      }
+      this.actionCards.push({bg, icon, lbl, dsc, result});
+    });
 
     // ── UPGRADE SHOP (right side) ────────────────────────────
     const RX = 370;
@@ -2296,23 +2850,28 @@ class CycleEndScene extends Phaser.Scene {
         canBuy:()=>this.upgrades.prepSpeed>0.96,       apply:()=>this.upgrades.prepSpeed=Math.max(0.95,this.upgrades.prepSpeed-0.05) },
       { key:'measSpeed',    label:'Faster Measurement', desc:'Measurement time −5%',        cost:140,
         canBuy:()=>this.upgrades.measSpeed>0.96,       apply:()=>this.upgrades.measSpeed=Math.max(0.95,this.upgrades.measSpeed-0.05) },
-      { key:'extraJob',     label:'Hire Postdoc',      desc:'+1 active job slot (max 5)',  cost:150,
-        canBuy:()=>this.upgrades.extraJobSlots<2,      apply:()=>this.upgrades.extraJobSlots=(this.upgrades.extraJobSlots||0)+1 },
+      { key:'extraJob',     label:'Hire Postdoc',      desc:'+1 postdoc NPC helper (max 2)', cost:150,
+        canBuy:()=>(this.upgrades.postdocs||0)<2,      apply:()=>this.upgrades.postdocs=(this.upgrades.postdocs||0)+1 },
       { key:'ringMaint',    label:'Ring Maintenance',  desc:'Halves ring stability decay', cost:100,
         canBuy:()=>!this.upgrades.ringMaint,           apply:()=>this.upgrades.ringMaint=true },
     ];
 
     this.upgButtons = [];
+    const cols = 2;
+    const colW = 360;
     UPGRADES.forEach((u,i)=>{
-      const uy = SY + 22 + i*72;
-      const bg = this.add.rectangle(RX,uy,556,64,0xfafcff).setOrigin(0,0).setStrokeStyle(1,0xaabbcc);
-      const lbl= this.add.text(RX+10,uy+8, u.label,{font:'bold 14px Courier New',color:'#1a5a8a'});
-      const dsc= this.add.text(RX+10,uy+26,u.desc, {font:'12px Courier New',color:'#2a5a6a'});
-      const cst= this.add.text(RX+10,uy+42,`💰 ${u.cost}`,{font:'12px Courier New',color:'#b38600'});
-      const btn= this.add.text(RX+460,uy+32,'[ BUY ]',
-        {font:'bold 13px Courier New',color:'#0a8a5a'}).setOrigin(1,0.5);
-      const owned = this.add.text(RX+460,uy+32,'✓ OWNED',
-        {font:'bold 13px Courier New',color:'#0a8a5a'}).setOrigin(1,0.5).setAlpha(0);
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      const ux = RX + col * colW;
+      const uy = SY + 22 + row*72;
+      const bg = this.add.rectangle(ux,uy,340,64,0xfafcff).setOrigin(0,0).setStrokeStyle(1,0xaabbcc);
+      const lbl= this.add.text(ux+10,uy+6, u.label,{font:'bold 16px Courier New',color:'#1a5a8a'});
+      const dsc= this.add.text(ux+10,uy+26,u.desc, {font:'13px Courier New',color:'#2a5a6a'});
+      const cst= this.add.text(ux+10,uy+44,`💰 ${u.cost}`,{font:'13px Courier New',color:'#b38600'});
+      const btn= this.add.text(ux+320,uy+32,'[ BUY ]',
+        {font:'bold 15px Courier New',color:'#0a8a5a'}).setOrigin(1,0.5);
+      const owned = this.add.text(ux+320,uy+32,'✓ OWNED',
+        {font:'bold 15px Courier New',color:'#0a8a5a'}).setOrigin(1,0.5).setAlpha(0);
       bg.setInteractive({useHandCursor:true});
       btn.setInteractive({useHandCursor:true});
       const doClick = ()=>{
@@ -2366,13 +2925,10 @@ class CycleEndScene extends Phaser.Scene {
     clrBtn.on('pointerout',   () => clrBtn.setStyle({color:'#aa6644'}));
     clrBtn.on('pointerdown',  () => { clearStats(); clrBtn.setText('[ Cleared ]'); });
 
-    // Continue button
-    this.contBtn = this.add.text(GW/2, GH-28, '[ CONTINUE TO PROPOSAL REVIEW ]',
-      {font:'bold 16px Courier New',color:'#00ff88'})
-      .setOrigin(0.5).setInteractive({useHandCursor:true});
-    this.contBtn.on('pointerover',()=>this.contBtn.setStyle({color:'#0a9a55'}));
-    this.contBtn.on('pointerout', ()=>this.contBtn.setStyle({color:'#0a7a44'}));
-    this.contBtn.on('pointerdown',()=>this.nextScene());
+    // Continue button — starts DISABLED until an action is chosen
+    this.contBtn = this.add.text(GW/2, GH-28, '[ CHOOSE AN ACTION ABOVE TO CONTINUE ]',
+      {font:'bold 14px Courier New',color:'#888888'})
+      .setOrigin(0.5);
 
     this.add.text(GW/2,GH-12,'THE BRILLIANT FACILITY  —  M1 Prototype',
       {font:'12px Courier New',color:'#aabbcc'}).setOrigin(0.5);
@@ -2528,7 +3084,7 @@ function clearStats() {
   localStorage.removeItem('tbf_stats');
 }
 
-new Phaser.Game({
+const game = new Phaser.Game({
   type:Phaser.AUTO,
   backgroundColor:'#cecac4',
   parent:'game-container',
@@ -2540,6 +3096,10 @@ new Phaser.Game({
     height:GH,
     resolution:DPR,
   },
+});
+
+window.addEventListener('resize', () => {
+  game.scale.refresh();
 });
 </script>
 </body>
