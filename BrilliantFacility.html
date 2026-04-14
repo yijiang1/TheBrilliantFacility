@@ -42,6 +42,8 @@
 //    6. Walk to Control Room → [Space] pick up result → sample complete!
 // ════════════════════════════════════════════════════════════════
 
+const VERSION = 'v0.1.3';
+
 let GW = Math.max(960, window.innerWidth);
 let GH = Math.max(600, window.innerHeight);
 const DPR = Math.min(window.devicePixelRatio || 1, 3);
@@ -293,10 +295,11 @@ class TutorialScene extends Phaser.Scene {
 
   _bg()           { this._o(this.add.rectangle(GW/2, GH/2, GW, GH, 0xeef4fc)); }
   _header(t, sub) {
-    this._o(this.add.rectangle(GW/2, 36, GW, 72, 0xd0e0f0)); 
-    this._o(this.add.rectangle(GW/2, 72, GW, 2, 0x0088aa, 0.4)); 
+    this._o(this.add.rectangle(GW/2, 36, GW, 72, 0xd0e0f0));
+    this._o(this.add.rectangle(GW/2, 72, GW, 2, 0x0088aa, 0.4));
     this._o(this.add.text(GW/2, 24, t,   {font:'bold 26px Courier New', color:'#062a6a', letterSpacing:4}).setOrigin(0.5));
     this._o(this.add.text(GW/2, 54, sub, {font:'bold 13px Courier New', color:'#1a4a8a', letterSpacing:2}).setOrigin(0.5));
+    this._o(this.add.text(GW - 12, 66, VERSION, {font:'11px Courier New', color:'#6a8aaa'}).setOrigin(1, 1));
   }
 
   // ── Page 0: Overview ─────────────────────────────────────────
@@ -1054,43 +1057,27 @@ class GameScene extends Phaser.Scene {
 
   // ── User NPCs ─────────────────────────────────────────────
   buildUserNPCs() {
-    const minR = this.RING_RAD + 30;
-    const maxR = this.PREP_RAD - 15;
-    const midR = (minR + maxR) / 2;
+    this._npcMinR = this.RING_RAD + 30;
+    this._npcMaxR = this.PREP_RAD - 15;
+    const midR = (this._npcMinR + this._npcMaxR) / 2;
     const prepStPos = this.prepKeys.map(k => ({ x: this.stDefs[k].x, y: this.stDefs[k].y }));
     const prepClearance = 80;
 
-    // 1. Enumerate every valid degree (0–359) where the ring clears all prep stations.
-    //    Sampling at midR is sufficient — the band is narrow and clearance has a built-in margin.
-    const validAngles = [];
+    // Build and cache the list of valid arc angles (same every game, depends only on layout).
+    this._npcValidAngles = [];
     for (let deg = 0; deg < 360; deg++) {
       const a  = Phaser.Math.DegToRad(deg);
       const tx = this.CX + Math.cos(a) * midR;
       const ty = this.CY + Math.sin(a) * midR;
       if (prepStPos.every(p => Phaser.Math.Distance.Between(tx, ty, p.x, p.y) >= prepClearance)) {
-        validAngles.push(a);
+        this._npcValidAngles.push(a);
       }
     }
 
-    // 2. Stratified placement: divide the valid arc into MAX_SLOTS equal strata,
-    //    shift the whole set by a random global offset so slot 0 isn't always at
-    //    the same angular position, then jitter each NPC within its stratum.
-    //
-    //    Jitter is capped at ±30 % of stride so adjacent NPCs are always at least
-    //    40 % of a stride apart (~95 px at midR), comfortably above any minSep check.
-    const n      = validAngles.length;               // ~284 for default layout
-    const stride = n / MAX_SLOTS;                    // ~57 degrees per slot
-    const globalOffset = Math.random() * n;          // random rotation of the whole set
-
+    // Assign a random position to every slot (including any already claimed during create()).
     this.npcPos = [];
     for (let i = 0; i < MAX_SLOTS; i++) {
-      const center = (globalOffset + (i + 0.5) * stride) % n;
-      const jitter = (Math.random() - 0.5) * stride * 0.6;   // ±30 % of stride
-      const idx    = Math.round((center + jitter + n) % n);
-      const angle  = validAngles[idx];
-      const r      = minR + Math.random() * (maxR - minR);
-      this.npcPos.push({ x: this.CX + Math.cos(angle) * r,
-                         y: this.CY + Math.sin(angle) * r });
+      this.npcPos.push(this._pickNpcPos());
     }
     this.npcR = 46;
     this.npcs = this.npcPos.map((pos,i)=>{
@@ -1111,6 +1098,14 @@ class GameScene extends Phaser.Scene {
       grp.add([nameTag,ring,leaveBarBg,leaveBarFill]);
       return {grp,nameTag,ring,leaveBarBg,leaveBarFill};
     });
+  }
+
+  // Pick a single random valid position in the NPC arc band.
+  _pickNpcPos() {
+    const angles = this._npcValidAngles;
+    const angle  = angles[Math.floor(Math.random() * angles.length)];
+    const r      = this._npcMinR + Math.random() * (this._npcMaxR - this._npcMinR);
+    return { x: this.CX + Math.cos(angle) * r, y: this.CY + Math.sin(angle) * r };
   }
 
   refreshNPCs() {
@@ -2396,7 +2391,18 @@ class GameScene extends Phaser.Scene {
   // Claim the first free NPC slot index for a newly-activated job
   _claimNpcSlot() {
     for (let i = 0; i < this.npcSlotUsed.length; i++) {
-      if (!this.npcSlotUsed[i]) { this.npcSlotUsed[i] = true; return i; }
+      if (!this.npcSlotUsed[i]) {
+        this.npcSlotUsed[i] = true;
+        // Re-randomise this slot's position so each spawn is at a fresh location.
+        // Guard: npcs/validAngles aren't ready during the early create() init pass;
+        // buildUserNPCs() handles initial placement for those slots.
+        if (this.npcs && this._npcValidAngles) {
+          const pos = this._pickNpcPos();
+          this.npcPos[i] = pos;
+          this.npcs[i].grp.setPosition(pos.x, pos.y);
+        }
+        return i;
+      }
     }
     return -1;
   }
