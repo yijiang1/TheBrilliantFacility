@@ -100,8 +100,8 @@ const GENERATION_DATA = [
     apps: [
       {name:'Mineral ID',        samples:[1,2], rep:12, lab:'dry'},
       {name:'Steel Alloy',       samples:[1,2], rep:15, lab:'dry'},
-      {name:'Crystal Structure', samples:[1,3], rep:18, lab:'dry'},
-      {name:'Pigment Analysis',  samples:[1,2], rep:10, lab:'dry'},
+      {name:'Crystal Structure', samples:[1,3], rep:18, lab:'wet'},
+      {name:'Pigment Analysis',  samples:[1,2], rep:10, lab:'wet'},
     ],
   },
   {
@@ -119,7 +119,7 @@ const GENERATION_DATA = [
     apps: [
       {name:'Catalyst Study',        samples:[2,3], rep:22, lab:'dry'},
       {name:'Protein Fragment',      samples:[2,3], rep:26, lab:'wet'},
-      {name:'Environmental Sample',  samples:[1,3], rep:16, lab:'wet'},
+      {name:'Environmental Sample',  samples:[1,3], rep:16, lab:'dry'},
       {name:'Pharmaceutical',        samples:[2,4], rep:28, lab:'wet'},
       {name:'Battery Electrode',     samples:[2,3], rep:22, lab:'dry'},
     ],
@@ -139,9 +139,9 @@ const GENERATION_DATA = [
     apps: [
       {name:'Drug Target',     samples:[2,4], rep:32, lab:'wet'},
       {name:'Geological Core', samples:[3,5], rep:38, lab:'dry'},
-      {name:'Archaeological',  samples:[1,3], rep:22, lab:'dry'},
+      {name:'Archaeological',  samples:[1,3], rep:22, lab:'wet'},
       {name:'Semiconductor',   samples:[2,4], rep:30, lab:'dry'},
-      {name:'Nanocomposite',   samples:[2,4], rep:34, lab:'dry'},
+      {name:'Nanocomposite',   samples:[2,4], rep:34, lab:'wet'},
     ],
   },
   {
@@ -163,7 +163,7 @@ const GENERATION_DATA = [
       {name:'Quantum Material',   samples:[2,4], rep:46, lab:'dry'},
       {name:'Operando Battery',   samples:[2,4], rep:42, lab:'dry'},
       {name:'Neural Tissue',      samples:[3,5], rep:48, lab:'wet'},
-      {name:'Ultrafast Dynamics', samples:[2,3], rep:55, lab:'dry'},
+      {name:'Ultrafast Dynamics', samples:[2,3], rep:55, lab:'wet'},
       {name:'Nano-device',        samples:[2,4], rep:44, lab:'dry'},
     ],
   },
@@ -322,8 +322,8 @@ class TutorialScene extends Phaser.Scene {
       this._o(this.add.text(f.x, 280, f.title, {font:'bold 16px Courier New', color:f.tc, letterSpacing:2}).setOrigin(0.5));
       this._o(this.add.text(f.x, 320, f.body,  {font:'15px Courier New', color:f.tc, align:'center', lineSpacing:8}).setOrigin(0.5));
     });
-    this._o(this.add.text(GW/2-160, 320, '→', {font:'bold 32px Courier New', color:'#6a8aab'}).setOrigin(0.5));
-    this._o(this.add.text(GW/2+160, 320, '→', {font:'bold 32px Courier New', color:'#6a8aab'}).setOrigin(0.5));
+    this._o(this.add.text(GW/2-160, 320, '→', {font:'bold 32px Courier New', color:'#3a5a7a'}).setOrigin(0.5));
+    this._o(this.add.text(GW/2+160, 320, '→', {font:'bold 32px Courier New', color:'#3a5a7a'}).setOrigin(0.5));
 
     // Year structure panel
     this._o(this.add.rectangle(GW/2, 480, 800, 100, 0xe8f0f8).setStrokeStyle(2, 0xaabbdd));
@@ -334,9 +334,9 @@ class TutorialScene extends Phaser.Scene {
       'Complete proposals to earn reputation  •  Reputation grows your annual grant',
       {font:'15px Courier New', color:'#1a2a4a', align:'center', lineSpacing:8}).setOrigin(0.5));
 
-    this._o(this.add.text(GW/2, GH-40,
+    this._o(this.add.text(GW/2, GH-62,
       'Press [→] or NEXT to continue  •  [SPACE] or [ENTER] to advance',
-      {font:'bold 14px Courier New', color:'#6a8aac', align:'center'}).setOrigin(0.5));
+      {font:'bold 14px Courier New', color:'#3a5a7a', align:'center'}).setOrigin(0.5));
   }
 
   // ── Page 1: Sample Workflow ───────────────────────────────────
@@ -368,11 +368,11 @@ class TutorialScene extends Phaser.Scene {
       this._o(this.add.text(GW/2 - 410, cy, s.num, {font:'bold 18px Courier New', color:'#ffffff'}).setOrigin(0.5));
       // Station name + description
       this._o(this.add.text(GW/2 - 360, cy - 14, s.name, {font:'bold 18px Courier New', color:s.tc}));
-      this._o(this.add.text(GW/2 - 360, cy + 10,  s.desc, {font:'15px Courier New',      color:'#2a3a5a'}));
+      this._o(this.add.text(GW/2 - 360, cy + 10,  s.desc, {font:'15px Courier New',      color:'#2a3a5a', wordWrap:{width:820}}));
       // Connector arrow between steps
       if (i < STEPS.length - 1) {
         this._o(this.add.text(GW/2 - 410, y + SH + GAP / 2, '↓',
-          {font:'bold 18px Courier New', color:'#8ab4cc'}).setOrigin(0.5));
+          {font:'bold 18px Courier New', color:'#3a6a8a'}).setOrigin(0.5));
       }
     });
 
@@ -394,7 +394,7 @@ class TutorialScene extends Phaser.Scene {
     const CTRL = [
       ['WASD / ↑↓←→', 'Move scientist'],
       ['[SPACE]',     'Pick up / Deposit /\nInteract'],
-      ['[SPACE]',     'Use Beamline Hutch\n(then stay near to complete)'],
+      ['[SPACE]',     'Use Beamline Hutch\n(stay nearby to finish)'],
       ['[ESC]',       'Pause game'],
     ];
     CTRL.forEach(([key, desc], i) => {
@@ -441,10 +441,10 @@ class TutorialScene extends Phaser.Scene {
         {font:'bold 13px Courier New', color:'#2a6a46', align:'center'}).setOrigin(0.5));
       // New game link
       const ng = this._o(this.add.text(bx, by + 65, '[ new game — erase save ]',
-        {font:'bold 13px Courier New', color:'#8a9bac'}).setOrigin(0.5));
+        {font:'bold 13px Courier New', color:'#4a6070'}).setOrigin(0.5));
       ng.setInteractive({useHandCursor:true});
       ng.on('pointerover', () => ng.setStyle({color:'#cc5544'}));
-      ng.on('pointerout',  () => ng.setStyle({color:'#8a9bac'}));
+      ng.on('pointerout',  () => ng.setStyle({color:'#4a6070'}));
       ng.on('pointerdown', () => this._startGame());
     } else {
       // Fresh start
@@ -1054,53 +1054,43 @@ class GameScene extends Phaser.Scene {
 
   // ── User NPCs ─────────────────────────────────────────────
   buildUserNPCs() {
-    // Place NPCs randomly inside the prep ring, well away from rooms and each other
     const minR = this.RING_RAD + 30;
     const maxR = this.PREP_RAD - 15;
-    // Collect prep station positions for direct distance exclusion
+    const midR = (minR + maxR) / 2;
     const prepStPos = this.prepKeys.map(k => ({ x: this.stDefs[k].x, y: this.stDefs[k].y }));
-    const prepClearance = 80; // px buffer around each prep station (half-diagonal of table + margin)
+    const prepClearance = 80;
 
-    const minSep = 70;
+    // 1. Enumerate every valid degree (0–359) where the ring clears all prep stations.
+    //    Sampling at midR is sufficient — the band is narrow and clearance has a built-in margin.
+    const validAngles = [];
+    for (let deg = 0; deg < 360; deg++) {
+      const a  = Phaser.Math.DegToRad(deg);
+      const tx = this.CX + Math.cos(a) * midR;
+      const ty = this.CY + Math.sin(a) * midR;
+      if (prepStPos.every(p => Phaser.Math.Distance.Between(tx, ty, p.x, p.y) >= prepClearance)) {
+        validAngles.push(a);
+      }
+    }
+
+    // 2. Stratified placement: divide the valid arc into MAX_SLOTS equal strata,
+    //    shift the whole set by a random global offset so slot 0 isn't always at
+    //    the same angular position, then jitter each NPC within its stratum.
+    //
+    //    Jitter is capped at ±30 % of stride so adjacent NPCs are always at least
+    //    40 % of a stride apart (~95 px at midR), comfortably above any minSep check.
+    const n      = validAngles.length;               // ~284 for default layout
+    const stride = n / MAX_SLOTS;                    // ~57 degrees per slot
+    const globalOffset = Math.random() * n;          // random rotation of the whole set
+
     this.npcPos = [];
-
-    const isClearOfPrep = (cx, cy) =>
-      prepStPos.every(p => Phaser.Math.Distance.Between(cx, cy, p.x, p.y) >= prepClearance);
-
     for (let i = 0; i < MAX_SLOTS; i++) {
-      let pos = null;
-      for (let t = 0; t < 300; t++) {
-        const angle = Math.random() * Math.PI * 2;
-        const r = minR + Math.random() * (maxR - minR);
-        const cx = this.CX + Math.cos(angle) * r;
-        const cy = this.CY + Math.sin(angle) * r;
-        if (!isClearOfPrep(cx, cy)) continue;
-        const tooClose = this.npcPos.some(p =>
-          Phaser.Math.Distance.Between(cx, cy, p.x, p.y) < minSep
-        );
-        if (tooClose) continue;
-        pos = { x: cx, y: cy };
-        break;
-      }
-      if (!pos) {
-        // Fallback: try safe angles in order, checking all constraints
-        const fallback = [10, 100, 170, 260, 350, 55, 145, 215, 305, 0];
-        const midR = (minR + maxR) / 2;
-        for (const deg of fallback) {
-          const rad = Phaser.Math.DegToRad(deg);
-          const fx = this.CX + Math.cos(rad) * midR;
-          const fy = this.CY + Math.sin(rad) * midR;
-          if (!isClearOfPrep(fx, fy)) continue;
-          const tooClose = this.npcPos.some(p =>
-            Phaser.Math.Distance.Between(fx, fy, p.x, p.y) < minSep
-          );
-          if (!tooClose) { pos = { x: fx, y: fy }; break; }
-        }
-        // Absolute last resort — should never happen with enough fallback angles
-        if (!pos) pos = { x: this.CX + Math.cos(Phaser.Math.DegToRad(i * 72)) * midR,
-                          y: this.CY + Math.sin(Phaser.Math.DegToRad(i * 72)) * midR };
-      }
-      this.npcPos.push(pos);
+      const center = (globalOffset + (i + 0.5) * stride) % n;
+      const jitter = (Math.random() - 0.5) * stride * 0.6;   // ±30 % of stride
+      const idx    = Math.round((center + jitter + n) % n);
+      const angle  = validAngles[idx];
+      const r      = minR + Math.random() * (maxR - minR);
+      this.npcPos.push({ x: this.CX + Math.cos(angle) * r,
+                         y: this.CY + Math.sin(angle) * r });
     }
     this.npcR = 46;
     this.npcs = this.npcPos.map((pos,i)=>{
@@ -1204,7 +1194,7 @@ class GameScene extends Phaser.Scene {
 
     for(let i=0;i<MAX_SLOTS;i++){
       const d=this.jobSlots[i];
-      const j=this.active[i];
+      const j=this.active.find(a => a.npcSlot === i);
 
       if(j){
         // ── Slot is ACTIVE JOB ──
@@ -1837,18 +1827,9 @@ class GameScene extends Phaser.Scene {
           this.flash(`Prepped — head to ${_tstr} → Experiment Setup`,'#44aaff');
           return;
         }
-        // 2b. Deposit a raw sample for processing
-        const rawIdx=this.held.findIndex(h=>h.stage==='raw');
+        // 2b. Deposit a raw sample for processing — find one that matches this lab's type
+        const rawIdx=this.held.findIndex(h=>h.stage==='raw' && (h.labType||'dry')===this.stDefs[pk].labType);
         if(rawIdx>=0){
-          // Check lab type match
-          const _rawItem = this.held[rawIdx];
-          const _rawJob = this.active.find(a => a.id === _rawItem.jobId);
-          const requiredLab = _rawItem.labType || _rawJob?.labType || 'dry';
-          if (this.stDefs[pk].labType !== requiredLab) {
-            const correctLab = requiredLab === 'wet' ? 'Wet Lab 🧪' : 'Dry Lab 🔩';
-            this.flash(`Wrong lab! This sample needs the ${correctLab}`, '#ff4433');
-            return;
-          }
           if(mySlots.length>=this.prepCap){
             this.flash(`${this.stDefs[pk].label} busy (capacity ${this.prepCap})`, '#ff8833'); return;
           }
@@ -1860,6 +1841,12 @@ class GameScene extends Phaser.Scene {
           mySlots.push({jobId:item.jobId, remaining:prepDur*1000, total:prepDur*1000});
           this.refreshJobs(); this.refreshNPCs();
           this.flash('Sample deposited — prep in progress...','#44aaff');
+          return;
+        }
+        // Has raw samples but none match this lab — give a helpful hint
+        if(this.held.some(h=>h.stage==='raw')){
+          const otherLab = this.stDefs[pk].labType === 'wet' ? 'Dry Lab 🔩' : 'Wet Lab 🧪';
+          this.flash(`No matching samples — try the ${otherLab}`, '#ff8833');
           return;
         }
       }
@@ -2348,15 +2335,15 @@ class GameScene extends Phaser.Scene {
       const bar = this.stBars[k];
       const rdy = this.stReady[k];
 
-      // Any non-complete slot (including unstarted measurements)
-      const active = slots.filter(s => !s.toStage);
+      // For meas stations: only show bar once scan is triggered (started); prep stations always show
+      const active = slots.filter(s => !s.toStage && (isMeas ? s.started : true));
       const ready  = slots.some(s => s.toStage);
 
       const playerNear = hasAuto || this.isPointInSt(st, this.px, this.py)
         || this.postdocs.some(pd => this.isPointInSt(st, pd.x, pd.y));
       if (active.length > 0 && bar) {
         const s = active[0];
-        const started = s.started !== false;  // prep slots have no started flag → always true
+        const started = s.started !== false;  // always true here: meas filtered to started, prep has no flag
         const total = s.total || (isMeas ? (DUR_MEAS_MIN+DUR_MEAS_MAX)/2*1000 : (DUR_PREP_MIN+DUR_PREP_MAX)/2*1000);
         const frac = Math.min(1, Math.max(0, (total - Math.max(0, s.remaining)) / total));
         const paused = !playerNear && started;
@@ -2795,7 +2782,7 @@ class CycleEndScene extends Phaser.Scene {
     ];
 
     this.actionCards = [];
-    const CW = 145, CH = 90;
+    const CW = 138, CH = 90;  // must fit 2 cards + 12px gap left of divider at RX-12=358
     actions.forEach((act, i) => {
       const cx = LX + i * (CW + 12);
       const cy = AY + 42;
@@ -2860,28 +2847,39 @@ class CycleEndScene extends Phaser.Scene {
     ];
 
     this.upgButtons = [];
-    const cols = 2;
-    const colW = 360;
-    UPGRADES.forEach((u,i)=>{
-      const row = Math.floor(i / cols);
-      const col = i % cols;
-      const ux = RX + col * colW;
-      const uy = SY + 22 + row*72;
-      const bg = this.add.rectangle(ux,uy,340,64,0xfafcff).setOrigin(0,0).setStrokeStyle(1,0xaabbcc);
-      const lbl= this.add.text(ux+10,uy+6, u.label,{font:'bold 16px Courier New',color:'#1a5a8a'});
-      const dsc= this.add.text(ux+10,uy+26,u.desc, {font:'13px Courier New',color:'#2a5a6a'});
-      const cst= this.add.text(ux+10,uy+44,`💰 ${u.cost}`,{font:'13px Courier New',color:'#b38600'});
-      const btn= this.add.text(ux+320,uy+32,'[ BUY ]',
-        {font:'bold 15px Courier New',color:'#0a8a5a'}).setOrigin(1,0.5);
-      const owned = this.add.text(ux+320,uy+32,'✓ OWNED',
-        {font:'bold 15px Courier New',color:'#0a8a5a'}).setOrigin(1,0.5).setAlpha(0);
+    // Fit 2 columns within the right panel without overflowing the canvas
+    const COL_GAP = 14;
+    const CARD_W  = Math.floor((GW - RX - COL_GAP - 20) / 2); // right margin 20px
+    const CARD_H  = 86;
+    const ROW_H   = CARD_H + 12;
+
+    UPGRADES.forEach((u, i) => {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const ux  = RX + col * (CARD_W + COL_GAP);
+      const uy  = SY + 26 + row * ROW_H;
+
+      const bg    = this.add.rectangle(ux, uy, CARD_W, CARD_H, 0xfafcff)
+                             .setOrigin(0, 0).setStrokeStyle(1, 0xaabbcc);
+      const lbl   = this.add.text(ux + 12, uy + 11, u.label,
+                      {font:'bold 14px Courier New', color:'#1a5a8a'});
+      const dsc   = this.add.text(ux + 12, uy + 31, u.desc,
+                      {font:'11px Courier New', color:'#3a6a8a',
+                       wordWrap:{width: CARD_W - 80}});
+      const cst   = this.add.text(ux + 12, uy + CARD_H - 19, `💰 ${u.cost}`,
+                      {font:'bold 12px Courier New', color:'#9a6600'});
+      const btn   = this.add.text(ux + CARD_W - 10, uy + CARD_H / 2 + 6, '[ BUY ]',
+                      {font:'bold 13px Courier New', color:'#0a8a5a'}).setOrigin(1, 0.5);
+      const owned = this.add.text(ux + CARD_W - 10, uy + CARD_H / 2 + 6, '✓ OWNED',
+                      {font:'bold 12px Courier New', color:'#4a9a6a'}).setOrigin(1, 0.5).setAlpha(0);
+
       bg.setInteractive({useHandCursor:true});
       btn.setInteractive({useHandCursor:true});
-      const doClick = ()=>{
-        if(!u.canBuy()){return;}
-        if(this.funding-this.spent < u.cost){
+      const doClick = () => {
+        if (!u.canBuy()) { return; }
+        if (this.funding - this.spent < u.cost) {
           this.fundingTxt.setText(`💰 ${this.funding-this.spent} — not enough!`).setStyle({color:'#cc3300'});
-          this.time.delayedCall(1200,()=>this.fundingTxt.setText(`💰 ${this.funding-this.spent} available`).setStyle({color:'#7a5000'}));
+          this.time.delayedCall(1200, () => this.fundingTxt.setText(`💰 ${this.funding-this.spent} available`).setStyle({color:'#7a5000'}));
           return;
         }
         this.spent += u.cost;
@@ -2889,10 +2887,10 @@ class CycleEndScene extends Phaser.Scene {
         this.fundingTxt.setText(`💰 ${this.funding-this.spent} available`);
         this.refreshUpgButtons();
       };
-      bg.on('pointerdown',doClick); btn.on('pointerdown',doClick);
-      bg.on('pointerover',()=>{ if(u.canBuy()) bg.setFillStyle(0xd0e4f8); });
-      bg.on('pointerout', ()=>bg.setFillStyle(u.canBuy()?0xfafcff:0xeeeeee));
-      this.upgButtons.push({u,bg,lbl,dsc,cst,btn,owned});
+      bg.on('pointerdown', doClick); btn.on('pointerdown', doClick);
+      bg.on('pointerover', () => { if (u.canBuy()) bg.setFillStyle(0xd0e4f8); });
+      bg.on('pointerout',  () => bg.setFillStyle(u.canBuy() ? 0xfafcff : 0xeeeeee));
+      this.upgButtons.push({u, bg, lbl, dsc, cst, btn, owned});
     });
     this.refreshUpgButtons();
 
