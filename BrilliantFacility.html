@@ -1353,36 +1353,47 @@ class GameScene extends Phaser.Scene {
       const label = this.add.text(0, -20, 'idle', {font:'10px Courier New', color:'#6699cc'}).setOrigin(0.5);
       grp.add(label);
       this.postdocs.push({ x, y, grp, label, targetX: x, targetY: y, targetKey: null, thinkTimer: 0,
-                            state: 'idle', assignedAction: null });
+                            state: 'idle', assignedAction: null, followAngle: angle });
     }
   }
 
   updatePostdocs(delta) {
     const SPD = this.SPD, dt = delta / 1000;
+    const level = this.upgrades.postdocLevel || 1;
     for (const pd of this.postdocs) {
-      pd.thinkTimer -= delta;
-      if (pd.thinkTimer <= 0) {
-        pd.thinkTimer = 1500;
-        const level = this.upgrades.postdocLevel || 1;
-        const t = level >= 2 ? this._postdocTargetL2(pd) : this._postdocTargetL1(pd);
-        if (t) {
-          pd.targetKey = t.key; pd.targetX = t.x; pd.targetY = t.y;
-          pd.assignedAction = t.action;
-          pd.state = 'moving';
-          pd.label.setText('▶ helping');
-        } else {
-          // Clear assignment if the action we were helping with is no longer active
-          if (pd.assignedAction) {
-            pd.assignedAction = null;
-            pd.state = 'idle';
-          }
-          if (pd.state === 'idle') {
-            pd.targetKey = null;
-            const a = Math.random() * Math.PI * 2;
-            const r = this.RING_RAD + 30 + Math.random() * (this.PREP_RAD - this.RING_RAD - 50);
-            pd.targetX = Phaser.Math.Clamp(this.CX + Math.cos(a) * r, 14, this.PLAY_W - 14);
-            pd.targetY = Phaser.Math.Clamp(this.CY + Math.sin(a) * r, this.HUD_H + 14, GH - 14);
-            pd.label.setText('idle');
+      if (level >= 2) {
+        // L2: follow the player at a fixed offset so they don't overlap
+        const FOLLOW_DIST = 20;
+        pd.targetX = this.px + Math.cos(pd.followAngle) * FOLLOW_DIST;
+        pd.targetY = this.py + Math.sin(pd.followAngle) * FOLLOW_DIST;
+        pd.assignedAction = null;
+        pd.state = 'following';
+        pd.label.setText('');
+      } else {
+        // L1: think-timer reactive targeting
+        pd.thinkTimer -= delta;
+        if (pd.thinkTimer <= 0) {
+          pd.thinkTimer = 1500;
+          const t = this._postdocTargetL1(pd);
+          if (t) {
+            pd.targetKey = t.key; pd.targetX = t.x; pd.targetY = t.y;
+            pd.assignedAction = t.action;
+            pd.state = 'moving';
+            pd.label.setText('▶ helping');
+          } else {
+            // Clear assignment if the action we were helping with is no longer active
+            if (pd.assignedAction) {
+              pd.assignedAction = null;
+              pd.state = 'idle';
+            }
+            if (pd.state === 'idle') {
+              pd.targetKey = null;
+              const a = Math.random() * Math.PI * 2;
+              const r = this.RING_RAD + 30 + Math.random() * (this.PREP_RAD - this.RING_RAD - 50);
+              pd.targetX = Phaser.Math.Clamp(this.CX + Math.cos(a) * r, 14, this.PLAY_W - 14);
+              pd.targetY = Phaser.Math.Clamp(this.CY + Math.sin(a) * r, this.HUD_H + 14, GH - 14);
+              pd.label.setText('idle');
+            }
           }
         }
       }
@@ -1395,7 +1406,7 @@ class GameScene extends Phaser.Scene {
         if (this.isValidPos(pd.x, pd.y + stepY, 8)) pd.y += stepY;
         pd.grp.setPosition(pd.x, pd.y);
       } else if (pd.state === 'moving' && pd.assignedAction) {
-        // Arrived at target — start working
+        // Arrived at target — start working (L1 only)
         pd.state = 'working';
         pd.label.setText('⚙ working');
       }
@@ -1896,6 +1907,7 @@ class GameScene extends Phaser.Scene {
           this.sampTxt.setText(`⬡ ${this.totalSamples} samples`);
           // Log this sample completion
           this.sampleLog.push({
+            year: this.year, cycle: this.cycle, cycleInYear: this.cycleInYear,
             jobName: j.name, tech: j.tech, labType: j.labType,
             samplesRequired: j.totalSamples,
             completedAtSec: Math.round((Date.now() - this.cycleStartWall) / 1000),
@@ -1908,6 +1920,7 @@ class GameScene extends Phaser.Scene {
             this.flash(`🎉 ${j.name} complete! +${j.rep} rep`,'#ffcc33');
             // Log proposal completion
             this.proposalLog.push({
+              year: this.year, cycle: this.cycle, cycleInYear: this.cycleInYear,
               name: j.name, tech: j.tech, labType: j.labType,
               samplesRequired: j.totalSamples, samplesDone: j.totalSamples,
               repEarned: j.rep, penalty: 0, outcome: 'completed',
@@ -2484,6 +2497,7 @@ class GameScene extends Phaser.Scene {
     // Log partial proposals (some samples done, not all)
     for (const j of this.active.filter(j => j.done > 0 && j.done < j.totalSamples)) {
       this.proposalLog.push({
+        year: this.year, cycle: this.cycle, cycleInYear: this.cycleInYear,
         name: j.name, tech: j.tech, labType: j.labType || 'dry',
         samplesRequired: j.totalSamples, samplesDone: j.done,
         repEarned: 0, penalty: 0, outcome: 'partial',
@@ -2492,6 +2506,7 @@ class GameScene extends Phaser.Scene {
     // Log failed proposals (committed, 0 samples done → −8 rep penalty each)
     for (const j of allCommitted) {
       this.proposalLog.push({
+        year: this.year, cycle: this.cycle, cycleInYear: this.cycleInYear,
         name: j.name, tech: j.tech, labType: j.labType || 'dry',
         samplesRequired: j.totalSamples, samplesDone: 0,
         repEarned: 0, penalty: -8, outcome: 'failed',
@@ -2814,7 +2829,7 @@ class CycleEndScene extends Phaser.Scene {
       },
       {
         key: 'train', icon: '🎓', label: 'Train Postdoc',
-        desc: hasPostdoc ? (canTrain ? `Level ${pdLevel} → ${pdLevel+1} (autonomous)` : `Already Level ${pdLevel} (max)`) : 'No postdoc hired',
+        desc: hasPostdoc ? (canTrain ? `Level ${pdLevel} → ${pdLevel+1} (follows you)` : `Already Level ${pdLevel} (max)`) : 'No postdoc hired',
         available: canTrain,
         apply: () => {
           this.upgrades.postdocLevel = (this.upgrades.postdocLevel || 1) + 1;
@@ -2951,6 +2966,7 @@ class CycleEndScene extends Phaser.Scene {
       funding:         d.funding,
       ring:            d.ringBase,
       upgrades:        d.upgrades,
+      activeUpgrades:  _activeUpgradeNames(d.upgrades),
       playDurationSec: d.playDurationSec ?? null,
       proposalLog:     d.proposalLog     ?? [],
       sampleLog:       d.sampleLog       ?? [],
@@ -3143,6 +3159,21 @@ function sendTelemetry(record) {
   form.append('file', new Blob([JSON.stringify(record, null, 2)], {type:'application/json'}), filename);
   fetch(TELEMETRY_WEBHOOK, { method:'POST', body: form })
     .catch(() => {});
+}
+
+// ── Upgrade name helper ───────────────────────────────────────
+function _activeUpgradeNames(upg) {
+  if (!upg) return [];
+  const names = [];
+  if (upg.ringMaint)                  names.push('ringMaint');
+  if ((upg.prepSpeed  || 1)  < 1)     names.push('prepSpeed');
+  if ((upg.measSpeed  || 1)  < 1)     names.push('measSpeed');
+  if ((upg.prepCap    || 1)  > 1)     names.push('prepCap');
+  if ((upg.measCap    || 1)  > 1)     names.push('measCap');
+  if ((upg.extraJobSlots||0) > 0)     names.push('extraJobSlots');
+  if ((upg.postdocs   || 0)  > 0)     names.push('postdocs');
+  if ((upg.postdocLevel||1)  > 1)     names.push('postdocLevel');
+  return names;
 }
 
 // ── Dev stats (localStorage) ──────────────────────────────────
