@@ -564,6 +564,9 @@ class GameScene extends Phaser.Scene {
     this.jobIdCtr     = 0;
     this.cycleProposalsDone = 0;
     this.cycleRepEarned     = 0;
+    this.cycleStartWall     = Date.now();
+    this.sampleLog          = [];   // per-sample completion events
+    this.proposalLog        = [];   // per-proposal outcomes
 
     this.pending = [];  // rapid-review proposals during gameplay
     this.active  = [];  // jobs in flight
@@ -1891,12 +1894,24 @@ class GameScene extends Phaser.Scene {
           j.done++;
           this.totalSamples++; this.yearSamples++;
           this.sampTxt.setText(`⬡ ${this.totalSamples} samples`);
+          // Log this sample completion
+          this.sampleLog.push({
+            jobName: j.name, tech: j.tech, labType: j.labType,
+            samplesRequired: j.totalSamples,
+            completedAtSec: Math.round((Date.now() - this.cycleStartWall) / 1000),
+          });
           if(j.done>=j.totalSamples){
             this.reputation+=j.rep;
             this.cycleProposalsDone++;
             this.cycleRepEarned += j.rep;
             this.repTxt.setText(`⭐ ${this.reputation} rep`);
             this.flash(`🎉 ${j.name} complete! +${j.rep} rep`,'#ffcc33');
+            // Log proposal completion
+            this.proposalLog.push({
+              name: j.name, tech: j.tech, labType: j.labType,
+              samplesRequired: j.totalSamples, samplesDone: j.totalSamples,
+              repEarned: j.rep, penalty: 0, outcome: 'completed',
+            });
             this._releaseNpcSlot(j.npcSlot);
             this.active.splice(this.active.indexOf(j),1);
             this.restockProposalHub();
@@ -2465,6 +2480,24 @@ class GameScene extends Phaser.Scene {
     for (const p of penalties) this.reputation = Math.max(0, this.reputation + p.penalty);
 
     const proposalsPartial = this.active.filter(j => j.done > 0 && j.done < j.totalSamples).length;
+
+    // Log partial proposals (some samples done, not all)
+    for (const j of this.active.filter(j => j.done > 0 && j.done < j.totalSamples)) {
+      this.proposalLog.push({
+        name: j.name, tech: j.tech, labType: j.labType || 'dry',
+        samplesRequired: j.totalSamples, samplesDone: j.done,
+        repEarned: 0, penalty: 0, outcome: 'partial',
+      });
+    }
+    // Log failed proposals (committed, 0 samples done → −8 rep penalty each)
+    for (const j of allCommitted) {
+      this.proposalLog.push({
+        name: j.name, tech: j.tech, labType: j.labType || 'dry',
+        samplesRequired: j.totalSamples, samplesDone: 0,
+        repEarned: 0, penalty: -8, outcome: 'failed',
+      });
+    }
+
     this.scene.start('CycleEnd',{
       cycle:this.cycle, cycleInYear:this.cycleInYear, year:this.year,
       yearSamples:this.yearSamples,
@@ -2477,6 +2510,9 @@ class GameScene extends Phaser.Scene {
       proposalsDone:    this.cycleProposalsDone,
       proposalsPartial,
       repEarned:        this.cycleRepEarned,
+      proposalLog:      this.proposalLog,
+      sampleLog:        this.sampleLog,
+      playDurationSec:  Math.round((Date.now() - this.cycleStartWall) / 1000),
     });
   }
 }
@@ -2915,6 +2951,9 @@ class CycleEndScene extends Phaser.Scene {
       funding:         d.funding,
       ring:            d.ringBase,
       upgrades:        d.upgrades,
+      playDurationSec: d.playDurationSec ?? null,
+      proposalLog:     d.proposalLog     ?? [],
+      sampleLog:       d.sampleLog       ?? [],
     };
     saveStatRecord(_statRecord);
     sendTelemetry(_statRecord);
