@@ -129,6 +129,7 @@ tr:hover td { background:#f4f8ff; }
   <button class="tab-btn" onclick="showTab('proposals', this)">PROPOSALS</button>
   <button class="tab-btn" onclick="showTab('throughput', this)">THROUGHPUT</button>
   <button class="tab-btn" onclick="showTab('montecarlo', this)">SIMULATION</button>
+  <button class="tab-btn" onclick="showTab('playtest', this)">PLAYTEST DATA</button>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════
@@ -463,6 +464,76 @@ tr:hover td { background:#f4f8ff; }
     <div class="panel">
       <div class="panel-title">Funding Bands by Year (P10 / P50 / P90)</div>
       <canvas id="chart-mc-bands" height="200"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     PLAYTEST DATA TAB
+══════════════════════════════════════════════════════════════ -->
+<div id="tab-playtest" class="tab-content">
+
+  <div class="sidebar">
+    <div class="panel">
+      <div class="panel-title">Load Data</div>
+      <div id="pt-dropzone"
+           style="border:2px dashed #aabbcc;border-radius:3px;padding:20px 10px;
+                  text-align:center;cursor:pointer;background:#f8fcff;margin-bottom:10px;"
+           onclick="document.getElementById('pt-file-input').click()"
+           ondragover="event.preventDefault();this.style.borderColor='#1a6aaa'"
+           ondragleave="this.style.borderColor='#aabbcc'"
+           ondrop="event.preventDefault();this.style.borderColor='#aabbcc';loadPlaytestFiles(event.dataTransfer.files)">
+        <div style="font-size:28px;color:#aabbcc;margin-bottom:6px;">&#8659;</div>
+        <div style="font-size:11px;color:#4a6a8a;">Drop JSON files here<br>or click to browse</div>
+        <div style="font-size:10px;color:#8aabcc;margin-top:4px;">Individual cycle files or full export array</div>
+      </div>
+      <input type="file" id="pt-file-input" accept=".json" multiple style="display:none"
+             onchange="loadPlaytestFiles(this.files)">
+      <div id="pt-load-status" style="font-size:11px;color:#7a9aaa;margin-bottom:10px;">No data loaded</div>
+
+      <div style="font-size:10px;letter-spacing:1px;color:#8aabcc;text-transform:uppercase;
+                  margin:10px 0 6px;font-weight:bold;border-top:1px solid #dde8f0;padding-top:10px;">
+        Sync from Discord
+      </div>
+      <div class="param-group">
+        <label style="font-size:11px;color:#3a5a7a;display:block;margin-bottom:3px;">Bot token</label>
+        <input type="password" id="pt-discord-token" placeholder="Paste bot token"
+               style="width:100%;padding:4px 6px;font-family:inherit;font-size:11px;
+                      border:1px solid #aabbcc;background:#f8fcff;border-radius:2px;">
+      </div>
+      <div class="param-group">
+        <label style="font-size:11px;color:#3a5a7a;display:block;margin-bottom:3px;">Channel ID</label>
+        <input type="text" id="pt-discord-channel" value="1493432678328832132"
+               style="width:100%;padding:4px 6px;font-family:inherit;font-size:11px;
+                      border:1px solid #aabbcc;background:#f8fcff;border-radius:2px;">
+      </div>
+      <button class="run-btn" style="margin-bottom:6px;" onclick="syncFromDiscord()">&#8659; Sync from Discord</button>
+      <div id="pt-discord-status" style="font-size:10px;color:#7a9aaa;margin-bottom:10px;line-height:1.5;"></div>
+
+      <button class="run-btn" style="margin-bottom:6px;" onclick="applyToThroughput()">&#8594; Apply avg to Throughput</button>
+      <button onclick="clearPlaytest()"
+              style="width:100%;padding:6px;font-family:inherit;font-size:11px;
+                     background:none;border:1px solid #cc8866;color:#cc4400;
+                     cursor:pointer;border-radius:2px;">Clear Data</button>
+    </div>
+
+    <div class="panel" id="pt-summary-panel" style="display:none">
+      <div class="panel-title">Summary</div>
+      <div id="pt-summary"></div>
+    </div>
+  </div>
+
+  <div class="main-col">
+    <div class="panel" id="pt-charts-panel" style="display:none">
+      <div class="panel-title">Samples per Cycle (colour = year)</div>
+      <canvas id="chart-pt-samples" height="160"></canvas>
+      <div class="panel-title" style="margin-top:16px;">Rep Earned &amp; Funding Over Time</div>
+      <canvas id="chart-pt-trends" height="160"></canvas>
+    </div>
+    <div class="panel" id="pt-table-panel" style="display:none">
+      <div class="panel-title">All Cycles</div>
+      <div id="pt-table" style="overflow-x:auto;"></div>
     </div>
   </div>
 
@@ -1267,6 +1338,257 @@ function runMonteCarlo() {
 }
 
 // ── Init ──────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════
+//  PLAYTEST DATA TAB
+// ════════════════════════════════════════════════════════════════
+let ptData = [];
+
+function loadPlaytestFiles(files) {
+  let pending = files.length;
+  if (!pending) return;
+
+  function onAllDone() {
+    ptData.sort((a, b) => a.ts.localeCompare(b.ts));
+    renderPlaytest();
+    document.getElementById('pt-load-status').textContent =
+      ptData.length + ' cycle(s) loaded';
+  }
+
+  const seen = new Set(ptData.map(r => r.ts));
+  for (const file of files) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const parsed = JSON.parse(e.target.result);
+        const records = Array.isArray(parsed) ? parsed : [parsed];
+        for (const r of records) {
+          if (r.ts && !seen.has(r.ts)) {
+            ptData.push(r);
+            seen.add(r.ts);
+          }
+        }
+      } catch(err) { /* skip unparseable file */ }
+      if (--pending === 0) onAllDone();
+    };
+    reader.readAsText(file);
+  }
+}
+
+function clearPlaytest() {
+  ptData = [];
+  document.getElementById('pt-load-status').textContent = 'No data loaded';
+  document.getElementById('pt-summary-panel').style.display  = 'none';
+  document.getElementById('pt-charts-panel').style.display   = 'none';
+  document.getElementById('pt-table-panel').style.display    = 'none';
+}
+
+function renderPlaytest() {
+  if (!ptData.length) return;
+  const n   = ptData.length;
+  const sum = f => ptData.reduce((s, r) => s + (r[f] || 0), 0);
+  const mx  = f => Math.max(...ptData.map(r => r[f] || 0));
+
+  const avgS  = (sum('samples')       / n).toFixed(1);
+  const avgRE = (sum('repEarned')     / n).toFixed(0);
+  const avgPD = (sum('proposalsDone') / n).toFixed(1);
+  const avgF  = (sum('failed')        / n).toFixed(1);
+
+  document.getElementById('pt-summary-panel').style.display = '';
+  document.getElementById('pt-charts-panel').style.display  = '';
+  document.getElementById('pt-table-panel').style.display   = '';
+
+  document.getElementById('pt-summary').innerHTML =
+    '<div class="metric-row">' +
+      '<div class="metric-card"><div class="metric-label">Cycles</div>' +
+        '<div class="metric-value">' + n + '</div></div>' +
+      '<div class="metric-card green"><div class="metric-label">Avg Samples</div>' +
+        '<div class="metric-value">' + avgS + '</div>' +
+        '<div class="metric-sub">max ' + mx('samples') + '</div></div>' +
+    '</div>' +
+    '<div class="metric-row">' +
+      '<div class="metric-card amber"><div class="metric-label">Avg Rep Earned</div>' +
+        '<div class="metric-value">' + avgRE + '</div></div>' +
+      '<div class="metric-card"><div class="metric-label">Avg Proposals</div>' +
+        '<div class="metric-value">' + avgPD + '</div>' +
+        '<div class="metric-sub">' + avgF + ' failed avg</div></div>' +
+    '</div>';
+
+  // Samples chart
+  const YEAR_COLORS = [
+    'rgba(26,106,170,0.75)', 'rgba(204,68,0,0.75)',
+    'rgba(0,153,68,0.75)',   'rgba(136,0,204,0.75)'
+  ];
+  chart('chart-pt-samples', {
+    type: 'bar',
+    data: {
+      labels: ptData.map(r => 'Y' + r.year + 'C' + r.cycleInYear),
+      datasets: [{
+        label: 'Samples',
+        data:  ptData.map(r => r.samples),
+        backgroundColor: ptData.map(r => YEAR_COLORS[(r.year - 1) % YEAR_COLORS.length]),
+        borderWidth: 0,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, title: { display: true, text: 'samples' } },
+        x: { ticks: { maxRotation: 45 } }
+      }
+    }
+  });
+
+  // Rep + Funding trends
+  chart('chart-pt-trends', {
+    type: 'line',
+    data: {
+      labels: ptData.map(r => 'Y' + r.year + 'C' + r.cycleInYear),
+      datasets: [
+        {
+          label: 'Rep Earned',
+          data:  ptData.map(r => r.repEarned),
+          borderColor: '#b38600', backgroundColor: 'transparent',
+          tension: 0.3, pointRadius: 4, yAxisID: 'y',
+        },
+        {
+          label: 'Funding',
+          data:  ptData.map(r => r.funding),
+          borderColor: '#1a6a3a', backgroundColor: 'transparent',
+          tension: 0.3, pointRadius: 4, yAxisID: 'y2',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8 } } },
+      scales: {
+        y:  { beginAtZero: true, title: { display: true, text: 'rep earned' }, position: 'left' },
+        y2: { beginAtZero: true, title: { display: true, text: 'funding' },    position: 'right',
+              grid: { drawOnChartArea: false } }
+      }
+    }
+  });
+
+  // Table
+  let html = '<table><thead><tr>' +
+    '<th>Date</th><th>Y</th><th>C</th>' +
+    '<th>Samples</th><th>Proposals</th><th>Partial</th><th>Failed</th>' +
+    '<th>Rep Earned</th><th>Reputation</th><th>Funding</th>' +
+    '</tr></thead><tbody>';
+  for (const r of ptData) {
+    const date = r.ts ? r.ts.slice(0, 10) : '—';
+    html +=
+      '<tr>' +
+      '<td style="font-size:10px;color:#6a8aaa">' + date + '</td>' +
+      '<td class="num">' + r.year + '</td>' +
+      '<td class="num">' + r.cycleInYear + '</td>' +
+      '<td class="num"><strong>' + r.samples + '</strong></td>' +
+      '<td class="num">' + (r.proposalsDone  ?? '—') + '</td>' +
+      '<td class="num">' + (r.proposalsPartial ?? '—') + '</td>' +
+      '<td class="num' + (r.failed ? ' ring-bad' : '') + '">' + (r.failed ?? '—') + '</td>' +
+      '<td class="num rep">+' + (r.repEarned  ?? '—') + '</td>' +
+      '<td class="num rep">&#11088; ' + (r.reputation ?? '—') + '</td>' +
+      '<td class="num fund">&#128176; ' + (r.funding   ?? '—') + '</td>' +
+      '</tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById('pt-table').innerHTML = html;
+}
+
+async function syncFromDiscord() {
+  const token     = document.getElementById('pt-discord-token').value.trim();
+  const channelId = document.getElementById('pt-discord-channel').value.trim();
+  const statusEl  = document.getElementById('pt-discord-status');
+
+  if (!token || !channelId) {
+    statusEl.textContent = 'Enter a bot token and channel ID.';
+    return;
+  }
+
+  statusEl.textContent = 'Fetching messages...';
+
+  try {
+    // Paginate through all messages newer than last sync cursor
+    const cursorKey = 'pt_cursor_' + channelId;
+    let cursor = sessionStorage.getItem(cursorKey);
+    let allMessages = [];
+
+    while (true) {
+      const params = new URLSearchParams({ limit: '100' });
+      if (cursor) params.set('after', cursor);
+
+      const resp = await fetch(
+        'https://discord.com/api/v10/channels/' + channelId + '/messages?' + params,
+        { headers: { Authorization: 'Bot ' + token } }
+      );
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        statusEl.textContent = 'Discord error: ' + (err.message || resp.status);
+        return;
+      }
+
+      const batch = await resp.json();
+      if (!batch.length) break;
+      allMessages.push(...batch);
+      if (batch.length < 100) break;
+      cursor = batch.reduce((max, m) => m.id > max ? m.id : max, batch[0].id);
+    }
+
+    // Sort oldest-first
+    allMessages.sort((a, b) => a.id.localeCompare(b.id));
+
+    // Download JSON attachments
+    const seen = new Set(ptData.map(r => r.ts));
+    let newCount = 0;
+
+    for (const msg of allMessages) {
+      for (const att of (msg.attachments || [])) {
+        if (att.filename.endsWith('.json')) {
+          try {
+            const record = await fetch(att.url).then(r => r.json());
+            if (record.ts && !seen.has(record.ts)) {
+              ptData.push(record);
+              seen.add(record.ts);
+              newCount++;
+            }
+          } catch(e) { /* skip */ }
+        }
+      }
+      // Advance cursor
+      if (!cursor || msg.id > cursor) cursor = msg.id;
+    }
+
+    if (cursor) sessionStorage.setItem(cursorKey, cursor);
+
+    if (newCount > 0) {
+      ptData.sort((a, b) => a.ts.localeCompare(b.ts));
+      renderPlaytest();
+      document.getElementById('pt-load-status').textContent = ptData.length + ' cycle(s) loaded';
+    }
+
+    statusEl.textContent = newCount + ' new record(s)  (' + ptData.length + ' total)';
+
+  } catch(e) {
+    statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+function applyToThroughput() {
+  if (!ptData.length) return;
+  const avgS = ptData.reduce((s, r) => s + (r.samples       || 0), 0) / ptData.length;
+  const avgP = ptData.reduce((s, r) => s + (r.proposalsDone || 0), 0) / ptData.length;
+  document.getElementById('p-obs-samp').value = Math.round(avgS);
+  document.getElementById('p-obs-prop').value = Math.round(avgP);
+  updateThroughput();
+  // Switch to Throughput tab
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-throughput').classList.add('active');
+  document.querySelectorAll('.tab-btn')[2].classList.add('active');
+}
+
 updateEconomy();
 updateProposals();
 updateThroughput();

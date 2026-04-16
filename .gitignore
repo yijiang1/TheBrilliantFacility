@@ -10,3 +10,6 @@ BrilliantFacility_EconomyModel.xlsx
 
 # Dev tools
 GameManager.html
+.env
+.sync_cursor
+tbf_stats.db
