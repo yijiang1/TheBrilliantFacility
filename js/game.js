@@ -293,7 +293,7 @@ class TutorialScene extends Phaser.Scene {
     clearSave();
     this.scene.start('ProposalReview', {
       cycle:1, cycleInYear:1, year:1, reputation:0, ringBase:98, funding:200000,
-      upgrades:{prepCap:1, measCap:1, prepSpeed:1.0, measSpeed:1.0, extraJobSlots:0, postdocs:0, postdocLevel:1, ringMaint:false},
+      upgrades:{prepCap:1, measCap:1, prepSpeedMap:{prep:1.0,prep2:1.0}, measSpeedMap:[1.0,1.0,1.0,1.0], extraJobSlots:0, postdocs:0, postdocLevel:1, ringMaint:false},
     });
   }
 
@@ -326,7 +326,7 @@ class GameScene extends Phaser.Scene {
     this.funding    = (d&&d.funding)    !== undefined ? d.funding : 200000;
     this.upgrades   = (d&&d.upgrades)   || {
       prepCap:1, measCap:1,
-      prepSpeed:1.0, measSpeed:1.0,
+      prepSpeedMap:{prep:1.0,prep2:1.0}, measSpeedMap:[1.0,1.0,1.0,1.0],
       extraJobSlots:0, postdocs:0, postdocLevel:1,
       ringMaint:false,
     };
@@ -351,8 +351,9 @@ class GameScene extends Phaser.Scene {
     this.active  = [];  // jobs in flight
 
     // Speed multipliers must be set before _rollJobDurations is called below
-    this._prepSpeed = this.upgrades.prepSpeed || 1.0;
-    this._measSpeed = this.upgrades.measSpeed || 1.0;
+    // Per-room maps: prepSpeedMap keyed by prep table ('prep'/'prep2'), measSpeedMap indexed by blIdx
+    this._prepSpeedMap = this.upgrades.prepSpeedMap || {prep:1.0, prep2:1.0};
+    this._measSpeedMap = this.upgrades.measSpeedMap || [1.0,1.0,1.0,1.0];
 
     // Stable NPC slot assignment — each active job keeps a fixed NPC position
     this.npcSlotUsed = new Array(MAX_SLOTS).fill(false);
@@ -1576,7 +1577,7 @@ class GameScene extends Phaser.Scene {
           const _pJob = this.active.find(a => a.id === item.jobId);
           const prepDur = (_pJob?.prepDurs?.length > 0)
             ? _pJob.prepDurs.shift()
-            : Phaser.Math.FloatBetween(DUR_PREP_MIN, DUR_PREP_MAX) * this._prepSpeed;
+            : Phaser.Math.FloatBetween(DUR_PREP_MIN, DUR_PREP_MAX) * (this._prepSpeedMap[pk] || 1.0);
           mySlots.push({jobId:item.jobId, remaining:prepDur*1000, total:prepDur*1000});
           this.refreshJobs(); this.refreshNPCs();
           this.flash('Sample deposited — prep in progress...','#44aaff');
@@ -1639,6 +1640,7 @@ class GameScene extends Phaser.Scene {
           this.sampleLog.push({
             year: this.year, cycle: this.cycle, cycleInYear: this.cycleInYear,
             jobName: j.name, tech: j.tech, labType: j.labType,
+            blIdx: this.beamlineTechs.indexOf(j.tech),
             samplesRequired: j.totalSamples,
             completedAtSec: Math.round((Date.now() - this.cycleStartWall) / 1000),
           });
@@ -1684,7 +1686,7 @@ class GameScene extends Phaser.Scene {
           const _mJob1 = this.active.find(a => a.id === item.jobId);
           const durMeas1 = (_mJob1?.measDurs?.length > 0)
             ? _mJob1.measDurs.shift()
-            : Phaser.Math.FloatBetween(DUR_MEAS_MIN, DUR_MEAS_MAX) * this._measSpeed;
+            : Phaser.Math.FloatBetween(DUR_MEAS_MIN, DUR_MEAS_MAX) * (this._measSpeedMap[bl.idx] || 1.0);
           this.measSlots.push({jobId:item.jobId, remaining:durMeas1*1000, total:durMeas1*1000, blIdx: bl.idx, started: false});
           this.redrawBeam();
           this.refreshJobs(); this.refreshNPCs();
@@ -1925,7 +1927,7 @@ class GameScene extends Phaser.Scene {
               const _mJob2 = this.active.find(a => a.id === item.jobId);
               const durMeas2 = (_mJob2?.measDurs?.length > 0)
                 ? _mJob2.measDurs.shift()
-                : Phaser.Math.FloatBetween(DUR_MEAS_MIN, DUR_MEAS_MAX) * this._measSpeed;
+                : Phaser.Math.FloatBetween(DUR_MEAS_MIN, DUR_MEAS_MAX) * (this._measSpeedMap[finishedBl] || 1.0);
               this.measSlots.push({jobId:item.jobId, remaining:durMeas2*1000, total:durMeas2*1000, blIdx: finishedBl, started: false});
               this.redrawBeam();
               this.flash(`Sample loaded at BL-${finishedBl+1} — go to Control Room and press [Space] to measure`,'#44ccff');
@@ -2178,9 +2180,11 @@ class GameScene extends Phaser.Scene {
     job.measDurs  = [];
     let totalSec = 0;
     for (let k = 0; k < job.totalSamples; k++) {
-      const prep  = Phaser.Math.FloatBetween(DUR_PREP_MIN,  DUR_PREP_MAX)  * this._prepSpeed;
+      const prepKey = job.labType === 'wet' ? 'prep' : 'prep2';
+      const measIdx = this.beamlineTechs.indexOf(job.tech);
+      const prep  = Phaser.Math.FloatBetween(DUR_PREP_MIN,  DUR_PREP_MAX)  * (this._prepSpeedMap[prepKey] || 1.0);
       const setup = Phaser.Math.FloatBetween(DUR_EXP_SETUP_MIN, DUR_EXP_SETUP_MAX);
-      const meas  = Phaser.Math.FloatBetween(DUR_MEAS_MIN,  DUR_MEAS_MAX)  * this._measSpeed;
+      const meas  = Phaser.Math.FloatBetween(DUR_MEAS_MIN,  DUR_MEAS_MAX)  * (measIdx >= 0 ? this._measSpeedMap[measIdx] : 1.0);
       job.prepDurs.push(prep);
       job.setupDurs.push(setup);
       job.measDurs.push(meas);
@@ -2328,8 +2332,8 @@ function _activeUpgradeNames(upg) {
   if (!upg) return [];
   const names = [];
   if (upg.ringMaint)                  names.push('ringMaint');
-  if ((upg.prepSpeed  || 1)  < 1)     names.push('prepSpeed');
-  if ((upg.measSpeed  || 1)  < 1)     names.push('measSpeed');
+  if (upg.prepSpeedMap) Object.entries(upg.prepSpeedMap).forEach(([k,v]) => { if (v < 1) names.push(`prepSpeed_${k}`); });
+  if (upg.measSpeedMap) upg.measSpeedMap.forEach((v,i) => { if (v < 1) names.push(`measSpeed_bl${i}`); });
   if ((upg.prepCap    || 1)  > 1)     names.push('prepCap');
   if ((upg.measCap    || 1)  > 1)     names.push('measCap');
   if ((upg.extraJobSlots||0) > 0)     names.push('extraJobSlots');

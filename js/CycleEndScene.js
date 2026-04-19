@@ -6,9 +6,19 @@ class CycleEndScene extends Phaser.Scene {
   init(d){
     this.d = d;
     this.upgrades = JSON.parse(JSON.stringify(d.upgrades || {
-      prepCap:1, measCap:1, prepSpeed:1.0, measSpeed:1.0,
+      prepCap:1, measCap:1,
+      prepSpeedMap:{prep:1.0,prep2:1.0}, measSpeedMap:[1.0,1.0,1.0,1.0],
       extraJobSlots:0, postdocs:0, postdocLevel:1, ringMaint:false,
     }));
+    // Migrate old single-value format from saved games
+    if (typeof this.upgrades.prepSpeedMap !== 'object' || Array.isArray(this.upgrades.prepSpeedMap)) {
+      const v = this.upgrades.prepSpeed || 1.0;
+      this.upgrades.prepSpeedMap = {prep:v, prep2:v};
+    }
+    if (!Array.isArray(this.upgrades.measSpeedMap)) {
+      const v = this.upgrades.measSpeed || 1.0;
+      this.upgrades.measSpeedMap = [v,v,v,v];
+    }
     // Calculate available funding
     const isYearEnd = d.cycleInYear === 3;
     if (isYearEnd) {
@@ -179,19 +189,47 @@ class CycleEndScene extends Phaser.Scene {
     g.lineStyle(1,0xccddee);
     g.lineBetween(RX-12,SY-4,RX-12,GH-60);
 
+    const PREP_LABS = [
+      { pk:'prep',  label:'Wet Lab 🧪' },
+      { pk:'prep2', label:'Dry Lab 🔩' },
+    ];
+    const BL_LABELS = (d.beamlineTechs || ['BL-1','BL-2','BL-3','BL-4'])
+      .map((tech, i) => ({ idx:i, label:`BL-${i+1} (${tech})` }));
+
     const UPGRADES = [
-      { key:'prepCap',      label:'Prep Room × 2',    desc:'Handle 2 samples at once',    cost:150000,
+      // ── Per-lab prep speed (2 cards) ──
+      ...PREP_LABS.map(lab => ({
+        key: `prepSpeed_${lab.pk}`,
+        label: `Faster Prep — ${lab.label}`,
+        desc: () => {
+          const pct = Math.round((1 - this.upgrades.prepSpeedMap[lab.pk]) * 100);
+          return `Prep time −5% per purchase\n${pct}% faster (max 50%)`;
+        },
+        cost: 10000,
+        canBuy: () => this.upgrades.prepSpeedMap[lab.pk] > 0.51,
+        apply:  () => { this.upgrades.prepSpeedMap[lab.pk] = Math.max(0.50, this.upgrades.prepSpeedMap[lab.pk] - 0.05); },
+      })),
+      // ── Per-beamline measurement speed (4 cards) ──
+      ...BL_LABELS.map(bl => ({
+        key: `measSpeed_${bl.idx}`,
+        label: `Faster Meas — ${bl.label}`,
+        desc: () => {
+          const pct = Math.round((1 - this.upgrades.measSpeedMap[bl.idx]) * 100);
+          return `Measurement −5% per purchase\n${pct}% faster (max 50%)`;
+        },
+        cost: 50000,
+        canBuy: () => this.upgrades.measSpeedMap[bl.idx] > 0.51,
+        apply:  () => { this.upgrades.measSpeedMap[bl.idx] = Math.max(0.50, this.upgrades.measSpeedMap[bl.idx] - 0.05); },
+      })),
+      // ── Other upgrades ──
+      { key:'extraJob',  label:'Hire Postdoc',    desc:'+1 postdoc NPC helper (max 2)', cost:100000,
+        canBuy:()=>(this.upgrades.postdocs||0)<2, apply:()=>this.upgrades.postdocs=(this.upgrades.postdocs||0)+1 },
+      { key:'prepCap',   label:'Prep Room × 2',   desc:'Handle 2 samples at once',     cost:150000,
         show:()=>d.year > 1,
-        canBuy:()=>this.upgrades.prepCap<2,            apply:()=>this.upgrades.prepCap=2 },
-      { key:'prepSpeed',    label:'Faster Prep',       desc:'Prep time −5%',               cost:10000,
-        canBuy:()=>this.upgrades.prepSpeed>0.96,       apply:()=>this.upgrades.prepSpeed=Math.max(0.95,this.upgrades.prepSpeed-0.05) },
-      { key:'measSpeed',    label:'Faster Measurement', desc:'Measurement time −5%',        cost:50000,
-        canBuy:()=>this.upgrades.measSpeed>0.96,       apply:()=>this.upgrades.measSpeed=Math.max(0.95,this.upgrades.measSpeed-0.05) },
-      { key:'extraJob',     label:'Hire Postdoc',      desc:'+1 postdoc NPC helper (max 2)', cost:100000,
-        canBuy:()=>(this.upgrades.postdocs||0)<2,      apply:()=>this.upgrades.postdocs=(this.upgrades.postdocs||0)+1 },
-      { key:'ringMaint',    label:'Ring Maintenance',  desc:'Restores +5% ring stability/cycle\n(net +3% after −2 decay)', cost:80000,
+        canBuy:()=>this.upgrades.prepCap<2,       apply:()=>this.upgrades.prepCap=2 },
+      { key:'ringMaint', label:'Ring Maintenance', desc:'Restores +5% ring stability/cycle\n(net +3% after −2 decay)', cost:80000,
         show:()=>d.year > 1,
-        canBuy:()=>!this.upgrades.ringMaint,           apply:()=>this.upgrades.ringMaint=true },
+        canBuy:()=>!this.upgrades.ringMaint,      apply:()=>this.upgrades.ringMaint=true },
     ];
 
     const visibleUpgrades = UPGRADES.filter(u => !u.show || u.show());
@@ -213,14 +251,16 @@ class CycleEndScene extends Phaser.Scene {
                              .setOrigin(0, 0).setStrokeStyle(1, 0xaabbcc);
       const lbl   = this.add.text(ux + 12, uy + 11, u.label,
                       {font:'bold 14px Courier New', color:'#1a5a8a'});
-      const dsc   = this.add.text(ux + 12, uy + 31, u.desc,
+      const getDesc = () => typeof u.desc === 'function' ? u.desc() : u.desc;
+      const dsc   = this.add.text(ux + 12, uy + 31, getDesc(),
                       {font:'11px Courier New', color:'#3a6a8a',
                        wordWrap:{width: CARD_W - 80}});
       const cst   = this.add.text(ux + 12, uy + CARD_H - 19, `💰 ${fmtK(u.cost)}`,
                       {font:'bold 12px Courier New', color:'#9a6600'});
       const btn   = this.add.text(ux + CARD_W - 10, uy + CARD_H / 2 + 6, '[ BUY ]',
                       {font:'bold 13px Courier New', color:'#0a8a5a'}).setOrigin(1, 0.5);
-      const owned = this.add.text(ux + CARD_W - 10, uy + CARD_H / 2 + 6, '✓ OWNED',
+      const ownedLabel = typeof u.desc === 'function' ? '✗ MAX' : '✓ OWNED';
+      const owned = this.add.text(ux + CARD_W - 10, uy + CARD_H / 2 + 6, ownedLabel,
                       {font:'bold 12px Courier New', color:'#4a9a6a'}).setOrigin(1, 0.5).setAlpha(0);
 
       bg.setInteractive({useHandCursor:true});
@@ -235,6 +275,7 @@ class CycleEndScene extends Phaser.Scene {
         this.spent += u.cost;
         u.apply();
         this.fundingTxt.setText(`💰 ${fmtK(this.funding-this.spent)} available`);
+        dsc.setText(getDesc());
         this.refreshUpgButtons();
       };
       bg.on('pointerdown', doClick); btn.on('pointerdown', doClick);
