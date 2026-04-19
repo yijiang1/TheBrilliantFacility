@@ -13,10 +13,10 @@ class CycleEndScene extends Phaser.Scene {
     const isYearEnd = d.cycleInYear === 3;
     if (isYearEnd) {
       // Award new yearly funding, cap carryover from last year
-      const carryover = Math.min(d.funding || 0, 200);
-      const newFunding = 400 + Math.floor((d.reputation||0) * 3);
+      const carryover = Math.min(d.funding || 0, 100000);
+      const newFunding = 200000 + Math.floor((d.reputation||0) * 2000);
       this.funding = carryover + newFunding;
-      this.newFundingMsg = `New year grant: 💰${newFunding}  (carryover: 💰${carryover})`;
+      this.newFundingMsg = `New year grant: 💰${fmtK(newFunding)}  (carryover: 💰${fmtK(carryover)})`;
     } else {
       this.funding = d.funding || 0;
       this.newFundingMsg = null;
@@ -172,7 +172,7 @@ class CycleEndScene extends Phaser.Scene {
     // ── UPGRADE SHOP (right side) ────────────────────────────
     const RX = 370;
     this.add.text(RX,SY,'UPGRADES',{font:'bold 13px Courier New',color:'#2a5a8a',letterSpacing:2});
-    this.fundingTxt = this.add.text(RX+220,SY,`💰 ${this.funding} available`,
+    this.fundingTxt = this.add.text(RX+220,SY,`💰 ${fmtK(this.funding)} available`,
       {font:'bold 13px Courier New',color:'#7a5000'});
 
     // Divider
@@ -180,19 +180,21 @@ class CycleEndScene extends Phaser.Scene {
     g.lineBetween(RX-12,SY-4,RX-12,GH-60);
 
     const UPGRADES = [
-      { key:'prepCap',      label:'Prep Room × 2',    desc:'Handle 2 samples at once',    cost:180,
+      { key:'prepCap',      label:'Prep Room × 2',    desc:'Handle 2 samples at once',    cost:150000,
+        show:()=>d.year > 1,
         canBuy:()=>this.upgrades.prepCap<2,            apply:()=>this.upgrades.prepCap=2 },
-      { key:'measCap',      label:'Measurement × 2',  desc:'Run 2 measurements simultaneously', cost:220,
-        canBuy:()=>this.upgrades.measCap<2,            apply:()=>this.upgrades.measCap=2 },
-      { key:'prepSpeed',    label:'Faster Prep',       desc:'Prep time −5%',               cost:120,
+      { key:'prepSpeed',    label:'Faster Prep',       desc:'Prep time −5%',               cost:10000,
         canBuy:()=>this.upgrades.prepSpeed>0.96,       apply:()=>this.upgrades.prepSpeed=Math.max(0.95,this.upgrades.prepSpeed-0.05) },
-      { key:'measSpeed',    label:'Faster Measurement', desc:'Measurement time −5%',        cost:140,
+      { key:'measSpeed',    label:'Faster Measurement', desc:'Measurement time −5%',        cost:50000,
         canBuy:()=>this.upgrades.measSpeed>0.96,       apply:()=>this.upgrades.measSpeed=Math.max(0.95,this.upgrades.measSpeed-0.05) },
-      { key:'extraJob',     label:'Hire Postdoc',      desc:'+1 postdoc NPC helper (max 2)', cost:150,
+      { key:'extraJob',     label:'Hire Postdoc',      desc:'+1 postdoc NPC helper (max 2)', cost:100000,
         canBuy:()=>(this.upgrades.postdocs||0)<2,      apply:()=>this.upgrades.postdocs=(this.upgrades.postdocs||0)+1 },
-      { key:'ringMaint',    label:'Ring Maintenance',  desc:'Halves ring stability decay', cost:100,
+      { key:'ringMaint',    label:'Ring Maintenance',  desc:'Restores +5% ring stability/cycle\n(net +3% after −2 decay)', cost:80000,
+        show:()=>d.year > 1,
         canBuy:()=>!this.upgrades.ringMaint,           apply:()=>this.upgrades.ringMaint=true },
     ];
+
+    const visibleUpgrades = UPGRADES.filter(u => !u.show || u.show());
 
     this.upgButtons = [];
     // Fit 2 columns within the right panel without overflowing the canvas
@@ -201,7 +203,7 @@ class CycleEndScene extends Phaser.Scene {
     const CARD_H  = 86;
     const ROW_H   = CARD_H + 12;
 
-    UPGRADES.forEach((u, i) => {
+    visibleUpgrades.forEach((u, i) => {
       const col = i % 2;
       const row = Math.floor(i / 2);
       const ux  = RX + col * (CARD_W + COL_GAP);
@@ -214,7 +216,7 @@ class CycleEndScene extends Phaser.Scene {
       const dsc   = this.add.text(ux + 12, uy + 31, u.desc,
                       {font:'11px Courier New', color:'#3a6a8a',
                        wordWrap:{width: CARD_W - 80}});
-      const cst   = this.add.text(ux + 12, uy + CARD_H - 19, `💰 ${u.cost}`,
+      const cst   = this.add.text(ux + 12, uy + CARD_H - 19, `💰 ${fmtK(u.cost)}`,
                       {font:'bold 12px Courier New', color:'#9a6600'});
       const btn   = this.add.text(ux + CARD_W - 10, uy + CARD_H / 2 + 6, '[ BUY ]',
                       {font:'bold 13px Courier New', color:'#0a8a5a'}).setOrigin(1, 0.5);
@@ -226,13 +228,13 @@ class CycleEndScene extends Phaser.Scene {
       const doClick = () => {
         if (!u.canBuy()) { return; }
         if (this.funding - this.spent < u.cost) {
-          this.fundingTxt.setText(`💰 ${this.funding-this.spent} — not enough!`).setStyle({color:'#cc3300'});
-          this.time.delayedCall(1200, () => this.fundingTxt.setText(`💰 ${this.funding-this.spent} available`).setStyle({color:'#7a5000'}));
+          this.fundingTxt.setText(`💰 ${fmtK(this.funding-this.spent)} — not enough!`).setStyle({color:'#cc3300'});
+          this.time.delayedCall(1200, () => this.fundingTxt.setText(`💰 ${fmtK(this.funding-this.spent)} available`).setStyle({color:'#7a5000'}));
           return;
         }
         this.spent += u.cost;
         u.apply();
-        this.fundingTxt.setText(`💰 ${this.funding-this.spent} available`);
+        this.fundingTxt.setText(`💰 ${fmtK(this.funding-this.spent)} available`);
         this.refreshUpgButtons();
       };
       bg.on('pointerdown', doClick); btn.on('pointerdown', doClick);

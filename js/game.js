@@ -292,7 +292,7 @@ class TutorialScene extends Phaser.Scene {
   _startGame() {
     clearSave();
     this.scene.start('ProposalReview', {
-      cycle:1, cycleInYear:1, year:1, reputation:0, ringBase:98, funding:400,
+      cycle:1, cycleInYear:1, year:1, reputation:0, ringBase:98, funding:200000,
       upgrades:{prepCap:1, measCap:1, prepSpeed:1.0, measSpeed:1.0, extraJobSlots:0, postdocs:0, postdocLevel:1, ringMaint:false},
     });
   }
@@ -323,7 +323,7 @@ class GameScene extends Phaser.Scene {
     this.committedProposals = (d&&d.committedProposals) || [];
     this.carryRep   = (d&&d.reputation) || 0;
     this.carryRing  = (d&&d.ringBase)   || 100;
-    this.funding    = (d&&d.funding)    !== undefined ? d.funding : 400;
+    this.funding    = (d&&d.funding)    !== undefined ? d.funding : 200000;
     this.upgrades   = (d&&d.upgrades)   || {
       prepCap:1, measCap:1,
       prepSpeed:1.0, measSpeed:1.0,
@@ -2247,7 +2247,7 @@ class GameScene extends Phaser.Scene {
       cycle:this.cycle, cycleInYear:this.cycleInYear, year:this.year,
       yearSamples:this.yearSamples,
       reputation:this.reputation,
-      ringBase:Math.max(30,this.carryRing - 2),
+      ringBase:Math.min(100,Math.max(30,this.carryRing - 2 + (this.upgrades.ringMaint ? 5 : 0))),
       funding: this.funding,
       upgrades: this.upgrades,
       beamlineTechs: this.beamlineTechs,

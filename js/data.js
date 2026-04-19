@@ -12,6 +12,8 @@
 
 const VERSION = 'v0.1.4';
 
+const fmtK = n => n >= 1000 ? `${Math.round(n / 1000)}K` : String(n);
+
 let GW = Math.max(960, window.innerWidth);
 let GH = Math.max(600, window.innerHeight);
 const DPR = Math.min(window.devicePixelRatio || 1, 3);
