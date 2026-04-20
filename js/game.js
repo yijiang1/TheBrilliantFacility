@@ -441,18 +441,34 @@ class GameScene extends Phaser.Scene {
 
     // Show NPCs for any pre-loaded committed proposals
     this.time.delayedCall(100, () => this.refreshNPCs(), [], this);
+
+    if (new URLSearchParams(window.location.search).has('dev')) this.buildDevPanel();
   }
 
   buildPauseOverlay() {
     const cx = this.PLAY_W / 2, cy = this.HUD_H + (GH - this.HUD_H) / 2;
     this.pauseOverlay = this.add.rectangle(cx, cy, this.PLAY_W, GH - this.HUD_H, 0x000022)
       .setAlpha(0).setDepth(50);
-    this.pauseTxt = this.add.text(cx, cy - 20, 'PAUSED',
+    this.pauseTxt = this.add.text(cx, cy - 40, 'PAUSED',
       {font:'bold 48px Courier New', color:'#ffffff', letterSpacing:6})
       .setOrigin(0.5).setAlpha(0).setDepth(51);
-    this.pauseHint = this.add.text(cx, cy + 30, 'press SPACE to resume',
+    this.pauseHint = this.add.text(cx, cy + 10, 'press ESC to resume',
       {font:'16px Courier New', color:'#aaccee', letterSpacing:2})
       .setOrigin(0.5).setAlpha(0).setDepth(51);
+
+    // Save & Quit button
+    const sqBg = this.add.rectangle(cx, cy + 56, 240, 36, 0x1a3a6a)
+      .setStrokeStyle(1, 0x4a7ab0).setAlpha(0).setDepth(51).setInteractive({ useHandCursor: true });
+    const sqTxt = this.add.text(cx, cy + 56, '💾  Save & Quit to Menu',
+      {font:'14px Courier New', color:'#aaccff'})
+      .setOrigin(0.5).setAlpha(0).setDepth(52);
+    sqBg.on('pointerover',  () => sqBg.setFillStyle(0x2a5a9a));
+    sqBg.on('pointerout',   () => sqBg.setFillStyle(0x1a3a6a));
+    sqBg.on('pointerdown',  () => this._saveAndQuit());
+
+    this.pauseSaveBtn  = sqBg;
+    this.pauseSaveTxt  = sqTxt;
+
     // Prevent browser default ESC behaviour (e.g. exiting fullscreen) from bubbling
     this.input.keyboard.addCapture(Phaser.Input.Keyboard.KeyCodes.ESC);
   }
@@ -463,6 +479,22 @@ class GameScene extends Phaser.Scene {
     this.pauseOverlay.setAlpha(this.gamePaused ? 0.5 : 0);
     this.pauseTxt.setAlpha(a);
     this.pauseHint.setAlpha(a);
+    this.pauseSaveBtn.setAlpha(a);
+    this.pauseSaveTxt.setAlpha(a);
+    if (this.gamePaused) this.pauseSaveBtn.setInteractive({ useHandCursor: true });
+    else this.pauseSaveBtn.disableInteractive();
+  }
+
+  _saveAndQuit() {
+    saveGame({
+      cycle: this.cycle, cycleInYear: this.cycleInYear, year: this.year,
+      reputation: this.reputation,
+      ringBase: this.carryRing,
+      funding: this.funding,
+      upgrades: this.upgrades,
+      beamlineTechs: this.beamlineTechs,
+    });
+    this.scene.start('Tutorial');
   }
 
   buildBeamDumpOverlay() {
@@ -1088,6 +1120,7 @@ class GameScene extends Phaser.Scene {
     }
     this.px = spawnX;
     this.py = spawnY;
+    this.playerMoveAngle = Math.PI / 2;  // default: postdoc starts above player
     this.SPD = 172;
 
     this.pCon=this.add.container(this.px,this.py).setDepth(10);
@@ -1141,11 +1174,12 @@ class GameScene extends Phaser.Scene {
     const SPD = this.SPD, dt = delta / 1000;
     const level = this.upgrades.postdocLevel || 1;
     for (const pd of this.postdocs) {
-      // L2 idle: continuously track player so postdoc is already nearby when work appears
+      // L2 idle: trail behind the player, opposite to their movement direction
       if (level >= 2 && pd.state === 'idle') {
-        const FOLLOW_DIST = 20;
-        pd.targetX = this.px + Math.cos(pd.followAngle) * FOLLOW_DIST;
-        pd.targetY = this.py + Math.sin(pd.followAngle) * FOLLOW_DIST;
+        const FOLLOW_DIST = 50;
+        const trailAngle = this.playerMoveAngle + Math.PI;
+        pd.targetX = this.px + Math.cos(trailAngle) * FOLLOW_DIST;
+        pd.targetY = this.py + Math.sin(trailAngle) * FOLLOW_DIST;
       }
 
       // Both levels use the same action logic; think-timer drives it
@@ -1183,10 +1217,28 @@ class GameScene extends Phaser.Scene {
       const dx = pd.targetX - pd.x, dy = pd.targetY - pd.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist > 4) {
-        let stepX = (dx / dist) * SPD * dt;
-        let stepY = (dy / dist) * SPD * dt;
-        if (this.isValidPos(pd.x + stepX, pd.y, 8)) pd.x += stepX;
-        if (this.isValidPos(pd.x, pd.y + stepY, 8)) pd.y += stepY;
+        const stepX = (dx / dist) * SPD * dt;
+        const stepY = (dy / dist) * SPD * dt;
+        let movedX = false, movedY = false;
+        if (this.isValidPos(pd.x + stepX, pd.y, 8)) { pd.x += stepX; movedX = true; }
+        if (this.isValidPos(pd.x, pd.y + stepY, 8)) { pd.y += stepY; movedY = true; }
+
+        // When completely blocked near the ring, orbit tangentially toward the target
+        if (!movedX && !movedY) {
+          const toCenter = Phaser.Math.Distance.Between(pd.x, pd.y, this.CX, this.CY);
+          if (toCenter < this.RING_RAD + 80) {
+            const radAngle = Math.atan2(pd.y - this.CY, pd.x - this.CX);
+            const cwX  = Math.cos(radAngle + Math.PI / 2), cwY  = Math.sin(radAngle + Math.PI / 2);
+            const ccwX = Math.cos(radAngle - Math.PI / 2), ccwY = Math.sin(radAngle - Math.PI / 2);
+            const dCW  = (pd.x + cwX  - pd.targetX) ** 2 + (pd.y + cwY  - pd.targetY) ** 2;
+            const dCCW = (pd.x + ccwX - pd.targetX) ** 2 + (pd.y + ccwY - pd.targetY) ** 2;
+            const orbitX = (dCW < dCCW ? cwX : ccwX) * SPD * dt;
+            const orbitY = (dCW < dCCW ? cwY : ccwY) * SPD * dt;
+            if (this.isValidPos(pd.x + orbitX, pd.y, 8)) pd.x += orbitX;
+            if (this.isValidPos(pd.x, pd.y + orbitY, 8)) pd.y += orbitY;
+          }
+        }
+
         pd.grp.setPosition(pd.x, pd.y);
       } else if (pd.state === 'moving' && pd.assignedAction) {
         // Arrived at target — start working (L1 only)
@@ -1351,7 +1403,7 @@ class GameScene extends Phaser.Scene {
   // ── Timers ────────────────────────────────────────────────
   onTick() {
     if (this.gamePaused) return;
-    this.yearTimer=Math.max(0,this.yearTimer-1);
+    this.yearTimer=Math.max(0,this.yearTimer-(this.devTickMult||1));
 
     // Tick beam dump countdown
     if (this.beamDump) {
@@ -1763,6 +1815,8 @@ class GameScene extends Phaser.Scene {
       }
       return false;
     };
+
+    if (dx !== 0 || dy !== 0) this.playerMoveAngle = Math.atan2(dy, dx);
 
     if (stepX !== 0 || stepY !== 0) {
       if (!tryMove(stepX, stepY)) {
@@ -2264,6 +2318,66 @@ class GameScene extends Phaser.Scene {
       playDurationSec:  Math.round((Date.now() - this.cycleStartWall) / 1000),
     });
   }
+
+  // ── Dev panel (enabled via ?dev URL param) ────────────────
+  buildDevPanel() {
+    const btnW = 58, btnH = 22, gap = 5;
+    const buttons = [
+      { label: '⏩ Cycle',  action: () => { this.yearTimer = 0; this.endYear(); } },
+      { label: '+$100k',    action: () => { this.funding += 100000; } },
+      { label: '+20 ⭐',   action: () => { this.reputation += 20; this.repTxt.setText(`⭐ ${this.reputation} rep`); } },
+      { label: '+1 Cy',     action: () => this._devAdvanceCycle() },
+      { label: '+1 Yr',     action: () => this._devAdvanceYear() },
+      { label: '1×',        action: () => this._cycleDevSpeed() },
+    ];
+    const panelW = buttons.length * (btnW + gap) + gap + 28;
+    const panelH = btnH + 16;
+    const px = GW - panelW - 4, py = GH - panelH - 4;
+
+    const bg = this.add.graphics().setDepth(200);
+    bg.fillStyle(0x001122, 0.88);
+    bg.fillRoundedRect(px, py, panelW, panelH, 5);
+    this.add.text(px + 5, py + panelH / 2, 'DEV', {
+      font: 'bold 8px Courier New', color: '#ff7700'
+    }).setOrigin(0, 0.5).setDepth(201);
+
+    buttons.forEach((btn, i) => {
+      const bx = px + 28 + i * (btnW + gap);
+      const by = py + 7;
+      const btnBg = this.add.rectangle(bx + btnW / 2, by + btnH / 2, btnW, btnH, 0x1a3d6b)
+        .setDepth(201).setInteractive({ useHandCursor: true });
+      const txt = this.add.text(bx + btnW / 2, by + btnH / 2, btn.label, {
+        font: '10px Courier New', color: '#aaccff'
+      }).setOrigin(0.5).setDepth(202);
+      if (i === buttons.length - 1) this._devSpeedBtn = txt;
+      btnBg.on('pointerdown', btn.action);
+      btnBg.on('pointerover', () => btnBg.setFillStyle(0x2a5ea0));
+      btnBg.on('pointerout',  () => btnBg.setFillStyle(0x1a3d6b));
+    });
+  }
+
+  _cycleDevSpeed() {
+    const speeds = [1, 2, 4, 8];
+    const cur = this.devTickMult || 1;
+    this.devTickMult = speeds[(speeds.indexOf(cur) + 1) % speeds.length];
+    this._devSpeedBtn.setText(`${this.devTickMult}×`);
+  }
+
+  _devAdvanceCycle() {
+    this.cycleInYear = (this.cycleInYear % 3) + 1;
+    if (this.cycleInYear === 1) this.year += 1;
+    this.cycle += 1;
+    this.flash(`DEV: jumped to Cycle ${this.cycleInYear} / Year ${this.year}`, '#ff8800');
+  }
+
+  _devAdvanceYear() {
+    this.year += 1;
+    this.cycleInYear = 1;
+    // Simulate the annual grant for the new year
+    const grant = 200000 + Math.floor(this.reputation * 500);
+    this.funding = Math.min(this.funding, 100000) + grant;
+    this.flash(`DEV: jumped to Year ${this.year}  💰+${fmtK(grant)} grant`, '#ff8800');
+  }
 }
 
 
@@ -2291,6 +2405,7 @@ function loadGame() {
 
 function clearSave() {
   localStorage.removeItem(SAVE_KEY);
+  localStorage.removeItem('tbf_stats');
 }
 
 // ── Telemetry — sends cycle record to Discord webhook ─────────

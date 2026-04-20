@@ -71,8 +71,8 @@ const GENERATION_DATA = [
     ],
     apps: [
       {name:'Mineral ID',        samples:[1,2], rep:12, lab:'dry'},
-      {name:'Steel Alloy',       samples:[1,2], rep:15, lab:'dry'},
-      {name:'Crystal Structure', samples:[1,3], rep:18, lab:'wet'},
+      {name:'Steel Alloy',       samples:[1,2], rep:16, lab:'dry'},
+      {name:'Crystal Structure', samples:[1,3], rep:20, lab:'wet'},
       {name:'Pigment Analysis',  samples:[1,2], rep:10, lab:'wet'},
     ],
   },
@@ -89,11 +89,11 @@ const GENERATION_DATA = [
       'Protein Crystallography', // MX  — macromolecular structure determination
     ],
     apps: [
-      {name:'Catalyst Study',        samples:[2,3], rep:22, lab:'dry'},
-      {name:'Protein Fragment',      samples:[2,3], rep:26, lab:'wet'},
-      {name:'Environmental Sample',  samples:[1,3], rep:16, lab:'dry'},
-      {name:'Pharmaceutical',        samples:[2,4], rep:28, lab:'wet'},
-      {name:'Battery Electrode',     samples:[2,3], rep:22, lab:'dry'},
+      {name:'Catalyst Study',        samples:[2,3], rep:14, lab:'dry'},
+      {name:'Protein Fragment',      samples:[2,3], rep:17, lab:'wet'},
+      {name:'Environmental Sample',  samples:[1,3], rep:11, lab:'dry'},
+      {name:'Pharmaceutical',        samples:[2,4], rep:20, lab:'wet'},
+      {name:'Battery Electrode',     samples:[2,3], rep:15, lab:'dry'},
     ],
   },
   {
@@ -109,11 +109,11 @@ const GENERATION_DATA = [
       'XRD Analysis',   // XRD  — high-resolution strain, texture & phase mapping
     ],
     apps: [
-      {name:'Drug Target',     samples:[2,4], rep:32, lab:'wet'},
-      {name:'Geological Core', samples:[3,5], rep:38, lab:'dry'},
-      {name:'Archaeological',  samples:[1,3], rep:22, lab:'wet'},
-      {name:'Semiconductor',   samples:[2,4], rep:30, lab:'dry'},
-      {name:'Nanocomposite',   samples:[2,4], rep:34, lab:'wet'},
+      {name:'Drug Target',     samples:[2,4], rep:16, lab:'wet'},
+      {name:'Geological Core', samples:[3,5], rep:20, lab:'dry'},
+      {name:'Archaeological',  samples:[1,3], rep:13, lab:'wet'},
+      {name:'Semiconductor',   samples:[2,4], rep:17, lab:'dry'},
+      {name:'Nanocomposite',   samples:[2,4], rep:18, lab:'wet'},
     ],
   },
   {
@@ -131,12 +131,12 @@ const GENERATION_DATA = [
       'Coherent Imaging',       // CDI    — lens-free imaging using fully coherent X-rays
     ],
     apps: [
-      {name:'Virus Particle',     samples:[3,5], rep:50, lab:'wet'},
-      {name:'Quantum Material',   samples:[2,4], rep:46, lab:'dry'},
-      {name:'Operando Battery',   samples:[2,4], rep:42, lab:'dry'},
-      {name:'Neural Tissue',      samples:[3,5], rep:48, lab:'wet'},
-      {name:'Ultrafast Dynamics', samples:[2,3], rep:55, lab:'wet'},
-      {name:'Nano-device',        samples:[2,4], rep:44, lab:'dry'},
+      {name:'Virus Particle',     samples:[3,5], rep:18, lab:'wet'},
+      {name:'Quantum Material',   samples:[2,4], rep:16, lab:'dry'},
+      {name:'Operando Battery',   samples:[2,4], rep:15, lab:'dry'},
+      {name:'Neural Tissue',      samples:[3,5], rep:17, lab:'wet'},
+      {name:'Ultrafast Dynamics', samples:[2,3], rep:20, lab:'wet'},
+      {name:'Nano-device',        samples:[2,4], rep:16, lab:'dry'},
     ],
   },
 ];
@@ -172,6 +172,40 @@ function pickBeamlineTechs(year) {
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
   return pool.slice(0, 4);
+}
+
+// ── Sample name pools (per application type) ────────────────────────────────
+const SAMPLE_NAME_POOLS = {
+  'Mineral ID':          ['Quartz','Calcite','Feldspar','Magnetite','Olivine','Pyrite','Apatite','Zircon'],
+  'Steel Alloy':         ['Fe-17Cr','Ni-Mo-V','304-SS','Duplex','Fe-Mn','17-4PH','H-C276','IN-625'],
+  'Crystal Structure':   ['CuBTC','ZIF-8','MOF-5','MIL-101','UiO-66','HKUST','AlBDC','ZnMOF'],
+  'Pigment Analysis':    ['Azurite','Vermilion','Ochre','Verdigris','Smalt','Orpiment','Realgar','Gypsum'],
+  'Catalyst Study':      ['Pt/Al₂O₃','Fe-ZSM5','Ru-TiO₂','Cu-CeO₂','Ni-SiO₂','Pd-C','Co-Mo','V₂O₅'],
+  'Protein Fragment':    ['Lysozyme','Ferritin','RuBisCO','Collagen','Albumin','Myoglobin','Catalase','Casein'],
+  'Environmental Sample':['River-A','Soil-B','Sediment','Aerosol','Runoff','Leachate','Biofilm','Dust'],
+  'Pharmaceutical':      ['Ibuprofen','Aspirin','Metformin','Penicillin','Caffeine','Naproxen','Furosemide','Tamoxifen'],
+  'Battery Electrode':   ['LiFePO₄','NMC-811','LCO','NCA','LMO','LNMO','Si-C anode','Li-metal'],
+  'Drug Target':         ['Kinase-A','GPCR-B','Protease','Ion Chan.','Receptor','Integrin','Polymerase','Ubiquitin'],
+  'Geological Core':     ['Basalt','Shale','Granite','Limestone','Dolomite','Sandstone','Gabbro','Peridotite'],
+  'Archaeological':      ['Bronze','Glaze','Bone','Pigment','Ceramic','Iron slag','Textile','Resin'],
+  'Semiconductor':       ['Si-p+','GaAs','InP','GaN','SiC','Ge-SOI','HgCdTe','AlGaN'],
+  'Nanocomposite':       ['CNT/epoxy','TiO₂/PS','Fe₃O₄/PEG','ZnO/PVDF','Ag/gelatin','AuNP/silk','Gr/nylon','CeO₂/PE'],
+  'Virus Particle':      ['Adeno-2','VSV-G','SARS-2','HIV-Gag','T4 phage','MS2','TMV','HBV core'],
+  'Quantum Material':    ['FeSe','CrI₃','MoS₂','Bi₂Se₃','LaAlO₃','SmB₆','α-RuCl₃','YBa₂Cu₃O₇'],
+  'Operando Battery':    ['LCO cell','NMC pouch','LFP coin','Si anode','Na-ion','K-ion','Li-S','All-solid'],
+  'Neural Tissue':       ['Cortex-A','Hippocmp.','Cerebellm.','Striatum','Brainstem','Retina','Cochlea','Spinal'],
+  'Ultrafast Dynamics':  ['Fe(CO)₅','Mn₂(CO)₁₀','Ru-dye','VO₂','GeTe','MnAs','BLUF dom.','PYP'],
+  'Nano-device':         ['FinFET','GAA-FET','MEMS-1','PCM cell','RRAM node','MTJ stack','SAW dev.','LED epi'],
+};
+
+// Pick `count` unique sample names for a given application type
+function pickSampleNames(appName, count) {
+  const pool = SAMPLE_NAME_POOLS[appName];
+  if (!pool || !pool.length) {
+    return Array.from({length: count}, (_, i) => `S-${String(i+1).padStart(2,'0')}`);
+  }
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, Math.min(count, shuffled.length));
 }
 
 // Processing durations

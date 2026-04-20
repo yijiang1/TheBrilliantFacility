@@ -37,14 +37,6 @@ class ProposalReviewScene extends Phaser.Scene {
     this.add.text(GW/2, 48, `CYCLE ${this.cycleInYear} / YEAR ${this.year}  —  PROPOSAL REVIEW`,
       {font:'bold 14px Courier New', color:'#2a5a8a', letterSpacing:2}).setOrigin(0.5);
 
-    // Rep + ring info
-    this.add.text(40, 32, `⭐ ${this.reputation} rep`,
-      {font:'bold 16px Courier New', color:'#b38600'}).setOrigin(0,0.5);
-    this.add.text(GW/2 + 250, 32, `💰 ${this.funding} funding`,
-      {font:'bold 16px Courier New', color:'#7a5000'}).setOrigin(0.5,0.5);
-    this.add.text(GW-40, 32, `Ring ${Math.round(this.ringBase)}%`,
-      {font:'bold 16px Courier New', color:this.ringBase>60?'#1a6a2a':this.ringBase>30?'#aa5500':'#cc1100'}).setOrigin(1,0.5);
-
     // Instruction
     this.add.text(GW/2, 85,
       'Select any proposals to commit this cycle. Only 3 run simultaneously — extras queue up. Unfinished commitments cost reputation.',
@@ -82,7 +74,8 @@ class ProposalReviewScene extends Phaser.Scene {
       const rep = app.rep + (samples-1)*8 + Phaser.Math.Between(-3,3);
       // Penalty for 0 done: proportional to rep value
       const penalty = Math.round(rep * 0.35);
-      out.push({ name:app.name, tech, samples, rep, penalty, labType: app.lab || 'dry' });
+      const sampleNames = pickSampleNames(app.name, samples);
+      out.push({ name:app.name, tech, samples, sampleNames, rep, penalty, labType: app.lab || 'dry' });
     }
     return out;
   }
@@ -103,12 +96,28 @@ class ProposalReviewScene extends Phaser.Scene {
     const tech = this.add.text(cx, cy-34, `${p.tech}${blIdx >= 0 ? ` (BL-${blIdx+1})` : ''}`,
       {font:'bold 14px Courier New', color:blTxt, wordWrap:{width:cw-20}, align:'center'}).setOrigin(0.5);
 
+    // Upgrade hint for this beamline / lab
+    const prepKey = p.labType === 'wet' ? 'prep' : 'prep2';
+    const prepSpeedMap = this.upgrades.prepSpeedMap || {prep:1.0, prep2:1.0};
+    const measSpeedMap = this.upgrades.measSpeedMap || [1.0,1.0,1.0,1.0];
+    const prepPct = Math.round((1 - (prepSpeedMap[prepKey] || 1.0)) * 100);
+    const measPct = blIdx >= 0 ? Math.round((1 - (measSpeedMap[blIdx] || 1.0)) * 100) : 0;
+    const upgParts = [];
+    if (prepPct > 0) upgParts.push(`prep −${prepPct}%`);
+    if (measPct > 0) upgParts.push(`meas −${measPct}%`);
+    const upgHint = upgParts.length > 0 ? `⚡ ${upgParts.join('  ')}` : '';
+    this.add.text(cx, cy-18, upgHint,
+      {font:'10px Courier New', color:'#2a7a2a', align:'center'}).setOrigin(0.5);
+
     const repTxt = this.add.text(cx-cw/2+24, cy-8, `⭐ +${p.rep} rep`,
       {font:'bold 14px Courier New', color:'#b38600'});
-    const batchTxt = this.add.text(cx-cw/2+24, cy+14, `📦 ${p.samples} sample${p.samples>1?'s':''}`,
-      {font:'bold 14px Courier New', color:'#0a8a5a'});
-    const penTxt = this.add.text(cx-cw/2+24, cy+36, `⚠ −${p.penalty} rep if 0 done`,
-      {font:'bold 13px Courier New', color:'#aa3300'});
+    const lineH = 16;
+    const sampleLines = p.sampleNames.map((n, i) => (i === 0 ? `📦 ${n}` : `   ${n}`)).join('\n');
+    const batchTxt = this.add.text(cx-cw/2+24, cy+14, sampleLines,
+      {font:'bold 13px Courier New', color:'#0a8a5a', lineSpacing: 2});
+    const penY = cy + 14 + p.samples * lineH + 4;
+    const penTxt = this.add.text(cx-cw/2+24, penY, `⚠ −${p.penalty} rep if 0 done`,
+      {font:'bold 12px Courier New', color:'#aa3300'});
 
     const tick = this.add.text(cx+cw/2-24, cy-60, '',
       {font:'bold 24px Courier New', color:'#1a8a3a'}).setOrigin(0.5);

@@ -24,9 +24,10 @@ class CycleEndScene extends Phaser.Scene {
     if (isYearEnd) {
       // Award new yearly funding, cap carryover from last year
       const carryover = Math.min(d.funding || 0, 100000);
-      const newFunding = 200000 + Math.floor((d.reputation||0) * 2000);
-      this.funding = carryover + newFunding;
-      this.newFundingMsg = `New year grant: 💰${fmtK(newFunding)}  (carryover: 💰${fmtK(carryover)})`;
+      const newFunding = 200000 + Math.floor((d.reputation||0) * 500);
+      const postdocCost = (this.upgrades.postdocs || 0) * 100000;
+      this.funding = carryover + newFunding - postdocCost;
+      this.newFundingMsg = `New year grant: 💰${fmtK(newFunding)}  (carryover: 💰${fmtK(carryover)}${postdocCost > 0 ? `  postdocs: -💰${fmtK(postdocCost)}` : ''})`;
     } else {
       this.funding = d.funding || 0;
       this.newFundingMsg = null;
@@ -196,6 +197,8 @@ class CycleEndScene extends Phaser.Scene {
     const BL_LABELS = (d.beamlineTechs || ['BL-1','BL-2','BL-3','BL-4'])
       .map((tech, i) => ({ idx:i, label:`BL-${i+1} (${tech})` }));
 
+    this.boughtThisCycle = new Set();
+
     const UPGRADES = [
       // ── Per-lab prep speed (2 cards) ──
       ...PREP_LABS.map(lab => ({
@@ -206,7 +209,8 @@ class CycleEndScene extends Phaser.Scene {
           return `Prep time −5% per purchase\n${pct}% faster (max 50%)`;
         },
         cost: 10000,
-        canBuy: () => this.upgrades.prepSpeedMap[lab.pk] > 0.51,
+        oncePerCycle: true,
+        canBuy: () => this.upgrades.prepSpeedMap[lab.pk] > 0.51 && !this.boughtThisCycle.has(`prepSpeed_${lab.pk}`),
         apply:  () => { this.upgrades.prepSpeedMap[lab.pk] = Math.max(0.50, this.upgrades.prepSpeedMap[lab.pk] - 0.05); },
       })),
       // ── Per-beamline measurement speed (4 cards) ──
@@ -218,7 +222,8 @@ class CycleEndScene extends Phaser.Scene {
           return `Measurement −5% per purchase\n${pct}% faster (max 50%)`;
         },
         cost: 50000,
-        canBuy: () => this.upgrades.measSpeedMap[bl.idx] > 0.51,
+        oncePerCycle: true,
+        canBuy: () => this.upgrades.measSpeedMap[bl.idx] > 0.51 && !this.boughtThisCycle.has(`measSpeed_${bl.idx}`),
         apply:  () => { this.upgrades.measSpeedMap[bl.idx] = Math.max(0.50, this.upgrades.measSpeedMap[bl.idx] - 0.05); },
       })),
       // ── Other upgrades ──
@@ -274,6 +279,7 @@ class CycleEndScene extends Phaser.Scene {
         }
         this.spent += u.cost;
         u.apply();
+        if (u.oncePerCycle) this.boughtThisCycle.add(u.key);
         this.fundingTxt.setText(`💰 ${fmtK(this.funding-this.spent)} available`);
         dsc.setText(getDesc());
         this.refreshUpgButtons();
