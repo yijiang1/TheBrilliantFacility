@@ -8,7 +8,7 @@ class CycleEndScene extends Phaser.Scene {
     this.upgrades = JSON.parse(JSON.stringify(d.upgrades || {
       prepCap:1, measCap:1,
       prepSpeedMap:{prep:1.0,prep2:1.0}, measSpeedMap:[1.0,1.0,1.0,1.0],
-      extraJobSlots:0, postdocs:0, postdocLevel:1, ringMaint:false,
+      extraJobSlots:0, postdocs:0, postdocLevels:[], postdocNames:[], ringMaint:false,
     }));
     // Migrate old single-value format from saved games
     if (typeof this.upgrades.prepSpeedMap !== 'object' || Array.isArray(this.upgrades.prepSpeedMap)) {
@@ -18,6 +18,16 @@ class CycleEndScene extends Phaser.Scene {
     if (!Array.isArray(this.upgrades.measSpeedMap)) {
       const v = this.upgrades.measSpeed || 1.0;
       this.upgrades.measSpeedMap = [v,v,v,v];
+    }
+    if (!Array.isArray(this.upgrades.postdocLevels)) {
+      const oldLv = this.upgrades.postdocLevel || 1;
+      this.upgrades.postdocLevels = Array(this.upgrades.postdocs || 0).fill(oldLv);
+    }
+    if (!Array.isArray(this.upgrades.postdocNames)) {
+      this.upgrades.postdocNames = [];
+      const count = this.upgrades.postdocs || 0;
+      for (let i = 0; i < count; i++)
+        this.upgrades.postdocNames.push(pickPostdocName(this.upgrades.postdocNames));
     }
     // Calculate available funding
     const isYearEnd = d.cycleInYear === 3;
@@ -102,7 +112,7 @@ class CycleEndScene extends Phaser.Scene {
 
     // New year funding banner
     if(this.newFundingMsg){
-      const fb = this.add.rectangle(LX-8,nextY,320,26,0xfef8e0).setOrigin(0,0).setStrokeStyle(1,0xccaa44);
+      this.add.rectangle(LX-8,nextY,320,26,0xfef8e0).setOrigin(0,0).setStrokeStyle(1,0xccaa44);
       this.add.text(LX+4,nextY+11,this.newFundingMsg,{font:'12px Courier New',color:'#7a5500'}).setOrigin(0,0.5);
       nextY += 40;
     }
@@ -115,32 +125,50 @@ class CycleEndScene extends Phaser.Scene {
     this.actionChosen = false;
     const repGain = Math.min(30, 10 + (d.yearSamples || 0) * 2);
     const hasPostdoc = (this.upgrades.postdocs || 0) > 0;
-    const pdLevel = this.upgrades.postdocLevel || 1;
-    const canTrain = hasPostdoc && pdLevel < 2;
+    const pdLevels = this.upgrades.postdocLevels || [];
+    const pdNames  = this.upgrades.postdocNames  || [];
+    const trainable = pdLevels.map((_, i) => i).filter(i => pdLevels[i] < 3);
+    const canTrain = hasPostdoc && trainable.length > 0;
+
+    const trainDesc = () => {
+      if (!hasPostdoc) return 'No postdoc hired';
+      if (!canTrain)   return 'All at max level';
+      return trainable.map(i => `${pdNames[i]} Lv${pdLevels[i]}→${pdLevels[i]+1}`).join('\n');
+    };
 
     const actions = [
       {
         key: 'paper', icon: '📄', label: 'Write Paper',
         desc: `+${repGain} reputation`,
         available: true,
+        selectMode: false,
         apply: () => {
           this.d.reputation = (this.d.reputation || 0) + repGain;
           if (this.repValTxt) this.repValTxt.setText(`⭐ ${this.d.reputation}`).setStyle({color:'#0a8a2a'});
           return `✓ Paper published! +${repGain} rep (now ${this.d.reputation})`;
-        }
+        },
       },
       {
         key: 'train', icon: '🎓', label: 'Train Postdoc',
-        desc: hasPostdoc ? (canTrain ? `Level ${pdLevel} → ${pdLevel+1} (follows you)` : `Already Level ${pdLevel} (max)`) : 'No postdoc hired',
+        desc: trainDesc(),
         available: canTrain,
+        // selectMode=true when >1 trainable postdoc so the player picks
+        selectMode: canTrain && trainable.length > 1,
         apply: () => {
-          this.upgrades.postdocLevel = (this.upgrades.postdocLevel || 1) + 1;
-          return `✓ Postdoc trained to Level ${this.upgrades.postdocLevel}!`;
-        }
+          const idx = trainable[0];
+          this.upgrades.postdocLevels[idx]++;
+          return `✓ ${pdNames[idx]} trained to Lv2!`;
+        },
+        applySelect: (pdIdx) => {
+          this.upgrades.postdocLevels[pdIdx]++;
+          return `✓ ${pdNames[pdIdx]} trained to Lv2!`;
+        },
+        selectOptions: trainable.map(i => ({ name: pdNames[i], pdIdx: i })),
       },
     ];
 
     this.actionCards = [];
+    this._pdSelectObjs = [];
     const CW = 138, CH = 90;  // must fit 2 cards + 12px gap left of divider at RX-12=358
     actions.forEach((act, i) => {
       const cx = LX + i * (CW + 12);
@@ -152,29 +180,62 @@ class CycleEndScene extends Phaser.Scene {
       const dsc = this.add.text(cx + CW/2, cy + 58, act.desc, {font:'10px Courier New', color: act.available ? '#2a7a3a' : '#999999', wordWrap:{width:CW-10}, align:'center'}).setOrigin(0.5, 0);
       const result = this.add.text(cx + CW/2, cy + CH + 6, '', {font:'bold 10px Courier New', color:'#0a8a5a'}).setOrigin(0.5);
 
+      const completeChoice = (msg) => {
+        this.actionChosen = true;
+        result.setText(msg);
+        bg.setFillStyle(0xd0f0d0).setStrokeStyle(2, 0x2a9a2a);
+        this.actionCards.forEach((c, j) => {
+          if (j === i) return;
+          c.bg.setFillStyle(0xeeeeee).setStrokeStyle(1, 0xcccccc);
+          c.lbl.setStyle({color:'#999999'});
+          c.icon.setAlpha(0.4);
+        });
+        this.contBtn.setText('[ CONTINUE TO PROPOSAL REVIEW ]').setStyle({color:'#0a7a44'});
+        this.contBtn.setInteractive({useHandCursor:true});
+        this.contBtn.on('pointerover',()=>this.contBtn.setStyle({color:'#0a9a55'}));
+        this.contBtn.on('pointerout', ()=>this.contBtn.setStyle({color:'#0a7a44'}));
+        this.contBtn.on('pointerdown',()=>this.nextScene());
+      };
+
       if (act.available) {
         bg.setInteractive({useHandCursor:true});
         bg.on('pointerover', () => { if (!this.actionChosen) bg.setFillStyle(0xd0e4f8); });
         bg.on('pointerout', () => { if (!this.actionChosen) bg.setFillStyle(0xfafcff); });
         bg.on('pointerdown', () => {
           if (this.actionChosen) return;
-          this.actionChosen = true;
-          const msg = act.apply();
-          result.setText(msg);
-          bg.setFillStyle(0xd0f0d0).setStrokeStyle(2, 0x2a9a2a);
-          // Gray out the other card
-          this.actionCards.forEach((c, j) => {
-            if (j === i) return;
-            c.bg.setFillStyle(0xeeeeee).setStrokeStyle(1, 0xcccccc);
-            c.lbl.setStyle({color:'#999999'});
-            c.icon.setAlpha(0.4);
-          });
-          // Enable continue button
-          this.contBtn.setText('[ CONTINUE TO PROPOSAL REVIEW ]').setStyle({color:'#0a7a44'});
-          this.contBtn.setInteractive({useHandCursor:true});
-          this.contBtn.on('pointerover',()=>this.contBtn.setStyle({color:'#0a9a55'}));
-          this.contBtn.on('pointerout', ()=>this.contBtn.setStyle({color:'#0a7a44'}));
-          this.contBtn.on('pointerdown',()=>this.nextScene());
+
+          if (act.selectMode) {
+            // Show postdoc-selection sub-panel below the action cards
+            bg.setFillStyle(0xd0e4f8);
+            result.setText('Choose postdoc ↓');
+            this._pdSelectObjs.forEach(o => o.destroy());
+            this._pdSelectObjs = [];
+
+            const selY = cy + CH + 26;
+            const prompt = this.add.text(cx, selY, 'Train which postdoc?',
+              {font:'10px Courier New', color:'#335577'}).setOrigin(0, 0);
+            this._pdSelectObjs.push(prompt);
+
+            act.selectOptions.forEach((opt, si) => {
+              const bx = cx + si * 72;
+              const by = selY + 16;
+              const sbg = this.add.rectangle(bx, by, 66, 26, 0xfafcff)
+                .setOrigin(0, 0).setStrokeStyle(1, 0x2266cc);
+              const stxt = this.add.text(bx + 33, by + 13, opt.name,
+                {font:'bold 10px Courier New', color:'#1a5a8a'}).setOrigin(0.5);
+              sbg.setInteractive({useHandCursor:true});
+              sbg.on('pointerover', () => sbg.setFillStyle(0xd0e4f8));
+              sbg.on('pointerout',  () => sbg.setFillStyle(0xfafcff));
+              sbg.on('pointerdown', () => {
+                this._pdSelectObjs.forEach(o => o.destroy());
+                this._pdSelectObjs = [];
+                completeChoice(act.applySelect(opt.pdIdx));
+              });
+              this._pdSelectObjs.push(sbg, stxt);
+            });
+          } else {
+            completeChoice(act.apply());
+          }
         });
       }
       this.actionCards.push({bg, icon, lbl, dsc, result});
@@ -227,8 +288,15 @@ class CycleEndScene extends Phaser.Scene {
         apply:  () => { this.upgrades.measSpeedMap[bl.idx] = Math.max(0.50, this.upgrades.measSpeedMap[bl.idx] - 0.05); },
       })),
       // ── Other upgrades ──
-      { key:'extraJob',  label:'Hire Postdoc',    desc:'+1 postdoc NPC helper (max 2)', cost:100000,
-        canBuy:()=>(this.upgrades.postdocs||0)<2, apply:()=>this.upgrades.postdocs=(this.upgrades.postdocs||0)+1 },
+      { key:'extraJob',  label:'Hire Postdoc',    desc:'+1 postdoc NPC helper', cost:100000,
+        oncePerCycle: true,
+        canBuy:()=>!this.boughtThisCycle.has('extraJob'),
+        apply:()=>{
+          this.upgrades.postdocs = (this.upgrades.postdocs || 0) + 1;
+          const name = pickPostdocName(this.upgrades.postdocNames || []);
+          (this.upgrades.postdocNames  = this.upgrades.postdocNames  || []).push(name);
+          (this.upgrades.postdocLevels = this.upgrades.postdocLevels || []).push(1);
+        } },
       { key:'prepCap',   label:'Prep Room × 2',   desc:'Handle 2 samples at once',     cost:150000,
         show:()=>d.year > 1,
         canBuy:()=>this.upgrades.prepCap<2,       apply:()=>this.upgrades.prepCap=2 },

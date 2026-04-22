@@ -293,7 +293,7 @@ class TutorialScene extends Phaser.Scene {
     clearSave();
     this.scene.start('ProposalReview', {
       cycle:1, cycleInYear:1, year:1, reputation:0, ringBase:98, funding:200000,
-      upgrades:{prepCap:1, measCap:1, prepSpeedMap:{prep:1.0,prep2:1.0}, measSpeedMap:[1.0,1.0,1.0,1.0], extraJobSlots:0, postdocs:0, postdocLevel:1, ringMaint:false},
+      upgrades:{prepCap:1, measCap:1, prepSpeedMap:{prep:1.0,prep2:1.0}, measSpeedMap:[1.0,1.0,1.0,1.0], extraJobSlots:0, postdocs:0, postdocLevels:[], postdocNames:[], ringMaint:false},
     });
   }
 
@@ -327,9 +327,20 @@ class GameScene extends Phaser.Scene {
     this.upgrades   = (d&&d.upgrades)   || {
       prepCap:1, measCap:1,
       prepSpeedMap:{prep:1.0,prep2:1.0}, measSpeedMap:[1.0,1.0,1.0,1.0],
-      extraJobSlots:0, postdocs:0, postdocLevel:1,
+      extraJobSlots:0, postdocs:0, postdocLevels:[], postdocNames:[],
       ringMaint:false,
     };
+    // Migrate old saves: single postdocLevel → per-postdoc arrays
+    if (!Array.isArray(this.upgrades.postdocLevels)) {
+      const oldLv = this.upgrades.postdocLevel || 1;
+      this.upgrades.postdocLevels = Array(this.upgrades.postdocs || 0).fill(oldLv);
+    }
+    if (!Array.isArray(this.upgrades.postdocNames)) {
+      this.upgrades.postdocNames = [];
+      const count = this.upgrades.postdocs || 0;
+      for (let i = 0; i < count; i++)
+        this.upgrades.postdocNames.push(pickPostdocName(this.upgrades.postdocNames));
+    }
     this.beamlineTechs = (d&&d.beamlineTechs) || pickBeamlineTechs(this.year);
   }
 
@@ -1156,26 +1167,29 @@ class GameScene extends Phaser.Scene {
       const r = this.PREP_RAD - 30;
       const x = this.CX + Math.cos(angle) * r;
       const y = this.CY + Math.sin(angle) * r;
+      const name  = (this.upgrades.postdocNames  || [])[i] || `PD${i+1}`;
+      const level = (this.upgrades.postdocLevels || [])[i] || 1;
+      const badge = name.slice(0, 3).toUpperCase();
       const grp = this.add.container(x, y).setDepth(9);
       grp.add([
         this.add.ellipse(0, 12, 28, 8, 0x2266aa, 0.25),
         this.add.circle(0, 0, 11, 0x2a66cc),
         this.add.rectangle(0, 5, 13, 8, 0xffffff, 0.4),
-        this.add.text(0, 0, `PD${i+1}`, {font:'bold 10px Courier New', color:'#fff'}).setOrigin(0.5),
+        this.add.text(0, 0, badge, {font:'bold 10px Courier New', color:'#fff'}).setOrigin(0.5),
       ]);
       const label = this.add.text(0, -20, 'idle', {font:'10px Courier New', color:'#6699cc'}).setOrigin(0.5);
       grp.add(label);
       this.postdocs.push({ x, y, grp, label, targetX: x, targetY: y, targetKey: null, thinkTimer: 0,
-                            state: 'idle', assignedAction: null, followAngle: angle });
+                            state: 'idle', assignedAction: null, followAngle: angle, stuckTimer: 0,
+                            name, level });
     }
   }
 
   updatePostdocs(delta) {
     const SPD = this.SPD, dt = delta / 1000;
-    const level = this.upgrades.postdocLevel || 1;
     for (const pd of this.postdocs) {
       // L2 idle: trail behind the player, opposite to their movement direction
-      if (level >= 2 && pd.state === 'idle') {
+      if (pd.level >= 2 && pd.state === 'idle') {
         const FOLLOW_DIST = 50;
         const trailAngle = this.playerMoveAngle + Math.PI;
         pd.targetX = this.px + Math.cos(trailAngle) * FOLLOW_DIST;
@@ -1200,7 +1214,7 @@ class GameScene extends Phaser.Scene {
           }
           if (pd.state === 'idle') {
             pd.targetKey = null;
-            if (level >= 2) {
+            if (pd.level >= 2) {
               // L2: idle target is already updated continuously above; just clear label
               pd.label.setText('');
             } else {
@@ -1217,26 +1231,34 @@ class GameScene extends Phaser.Scene {
       const dx = pd.targetX - pd.x, dy = pd.targetY - pd.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist > 4) {
-        const stepX = (dx / dist) * SPD * dt;
-        const stepY = (dy / dist) * SPD * dt;
-        let movedX = false, movedY = false;
-        if (this.isValidPos(pd.x + stepX, pd.y, 8)) { pd.x += stepX; movedX = true; }
-        if (this.isValidPos(pd.x, pd.y + stepY, 8)) { pd.y += stepY; movedY = true; }
+        let moved = false;
 
-        // When completely blocked near the ring, orbit tangentially toward the target
-        if (!movedX && !movedY) {
-          const toCenter = Phaser.Math.Distance.Between(pd.x, pd.y, this.CX, this.CY);
-          if (toCenter < this.RING_RAD + 80) {
-            const radAngle = Math.atan2(pd.y - this.CY, pd.x - this.CX);
-            const cwX  = Math.cos(radAngle + Math.PI / 2), cwY  = Math.sin(radAngle + Math.PI / 2);
-            const ccwX = Math.cos(radAngle - Math.PI / 2), ccwY = Math.sin(radAngle - Math.PI / 2);
-            const dCW  = (pd.x + cwX  - pd.targetX) ** 2 + (pd.y + cwY  - pd.targetY) ** 2;
-            const dCCW = (pd.x + ccwX - pd.targetX) ** 2 + (pd.y + ccwY - pd.targetY) ** 2;
-            const orbitX = (dCW < dCCW ? cwX : ccwX) * SPD * dt;
-            const orbitY = (dCW < dCCW ? cwY : ccwY) * SPD * dt;
-            if (this.isValidPos(pd.x + orbitX, pd.y, 8)) pd.x += orbitX;
-            if (this.isValidPos(pd.x, pd.y + orbitY, 8)) pd.y += orbitY;
+        // Proactively orbit when the straight path to target crosses the inner ring —
+        // avoids the case where one axis still has a sliver of movement and the postdoc
+        // inches along without making real progress toward the target.
+        if (this._pathCrossesRing(pd.x, pd.y, pd.targetX, pd.targetY)) {
+          moved = this._orbitRing(pd, SPD * dt);
+        } else {
+          const stepX = (dx / dist) * SPD * dt;
+          const stepY = (dy / dist) * SPD * dt;
+          let movedX = false, movedY = false;
+          if (this.isValidPos(pd.x + stepX, pd.y, 8)) { pd.x += stepX; movedX = true; }
+          if (this.isValidPos(pd.x, pd.y + stepY, 8)) { pd.y += stepY; movedY = true; }
+          moved = movedX || movedY;
+
+          // Fallback: orbit when completely blocked near the ring
+          if (!movedX && !movedY) {
+            const toCenter = Phaser.Math.Distance.Between(pd.x, pd.y, this.CX, this.CY);
+            if (toCenter < this.RING_RAD + 80) moved = this._orbitRing(pd, SPD * dt);
           }
+        }
+
+        // Stuck safety valve: if the postdoc hasn't moved in 2 s, force a re-think
+        if (moved) {
+          pd.stuckTimer = 0;
+        } else {
+          pd.stuckTimer += delta;
+          if (pd.stuckTimer > 2000) { pd.thinkTimer = 0; pd.stuckTimer = 0; }
         }
 
         pd.grp.setPosition(pd.x, pd.y);
@@ -1246,6 +1268,37 @@ class GameScene extends Phaser.Scene {
         pd.label.setText('⚙ working');
       }
     }
+  }
+
+  // True if line segment (x1,y1)→(x2,y2) passes through the inner ring (+ postdoc margin)
+  _pathCrossesRing(x1, y1, x2, y2) {
+    const r = this.RING_RAD + 8;
+    const ddx = x2 - x1, ddy = y2 - y1;
+    const fx = x1 - this.CX, fy = y1 - this.CY;
+    const a = ddx * ddx + ddy * ddy;
+    if (a === 0) return false;
+    const b = 2 * (fx * ddx + fy * ddy);
+    const c = fx * fx + fy * fy - r * r;
+    const disc = b * b - 4 * a * c;
+    if (disc < 0) return false;
+    const sq = Math.sqrt(disc);
+    const t1 = (-b - sq) / (2 * a), t2 = (-b + sq) / (2 * a);
+    return (t1 > 0 && t1 < 1) || (t2 > 0 && t2 < 1);
+  }
+
+  // Orbit the inner ring tangentially; returns true if any movement happened
+  _orbitRing(pd, step) {
+    const radAngle = Math.atan2(pd.y - this.CY, pd.x - this.CX);
+    const cwX  = Math.cos(radAngle + Math.PI / 2), cwY  = Math.sin(radAngle + Math.PI / 2);
+    const ccwX = Math.cos(radAngle - Math.PI / 2), ccwY = Math.sin(radAngle - Math.PI / 2);
+    const dCW  = (pd.x + cwX  - pd.targetX) ** 2 + (pd.y + cwY  - pd.targetY) ** 2;
+    const dCCW = (pd.x + ccwX - pd.targetX) ** 2 + (pd.y + ccwY - pd.targetY) ** 2;
+    const orbitX = (dCW < dCCW ? cwX : ccwX) * step;
+    const orbitY = (dCW < dCCW ? cwY : ccwY) * step;
+    let moved = false;
+    if (this.isValidPos(pd.x + orbitX, pd.y, 8)) { pd.x += orbitX; moved = true; }
+    if (this.isValidPos(pd.x, pd.y + orbitY, 8)) { pd.y += orbitY; moved = true; }
+    return moved;
   }
 
   // Level 1 AI: only react to player-initiated actions in rooms
@@ -1678,47 +1731,10 @@ class GameScene extends Phaser.Scene {
       const meas = this.stDefs[bl.measKey];
       if(this.isPointInSt(meas, this.px, this.py)){
         // 4a. Collect finished measurement result (priority)
-        const rdyIdx=this.measSlots.findIndex(s=>s.toStage==='meas_ready' && s.blIdx === bl.idx);
-        if(rdyIdx>=0){
-          const s=this.measSlots.splice(rdyIdx,1)[0];
-        this.redrawBeam();
-        // Complete this sample
-        const j=this.active.find(a=>a.id===s.jobId);
-        if(j){
-          j.done++;
-          this.totalSamples++; this.yearSamples++;
-          this.sampTxt.setText(`⬡ ${this.totalSamples} samples`);
-          // Log this sample completion
-          this.sampleLog.push({
-            year: this.year, cycle: this.cycle, cycleInYear: this.cycleInYear,
-            jobName: j.name, tech: j.tech, labType: j.labType,
-            blIdx: this.beamlineTechs.indexOf(j.tech),
-            samplesRequired: j.totalSamples,
-            completedAtSec: Math.round((Date.now() - this.cycleStartWall) / 1000),
-          });
-          if(j.done>=j.totalSamples){
-            this.reputation+=j.rep;
-            this.cycleProposalsDone++;
-            this.cycleRepEarned += j.rep;
-            this.repTxt.setText(`⭐ ${this.reputation} rep`);
-            this.flash(`🎉 ${j.name} complete! +${j.rep} rep`,'#ffcc33');
-            // Log proposal completion
-            this.proposalLog.push({
-              year: this.year, cycle: this.cycle, cycleInYear: this.cycleInYear,
-              name: j.name, tech: j.tech, labType: j.labType,
-              samplesRequired: j.totalSamples, samplesDone: j.totalSamples,
-              repEarned: j.rep, penalty: 0, outcome: 'completed',
-            });
-            this._releaseNpcSlot(j.npcSlot);
-            this.active.splice(this.active.indexOf(j),1);
-            this.restockProposalHub();
-          } else {
-            this.flash(`${j.name}: ${j.done}/${j.totalSamples} done — collect next sample`,'#00dd88');
-          }
-          this.refreshJobs(); this.refreshNPCs();
+        if(this.measSlots.some(s=>s.toStage==='meas_ready' && s.blIdx === bl.idx)){
+          this._collectMeasResult(bl.idx);
+          return;
         }
-        return;
-      }
         // 4b. Start a waiting measurement
         const waitIdx=this.measSlots.findIndex(s=>!s.started && !s.toStage && s.blIdx === bl.idx);
         if(waitIdx>=0){
@@ -1751,6 +1767,46 @@ class GameScene extends Phaser.Scene {
     this.flash('Nothing to do here right now','#888888');
   }
 
+  // Shared measurement-result collection: called by player interaction and Lv3 postdoc auto-collect
+  _collectMeasResult(blIdx, pdName = null) {
+    const rdyIdx = this.measSlots.findIndex(s => s.toStage === 'meas_ready' && s.blIdx === blIdx);
+    if (rdyIdx < 0) return;
+    const s = this.measSlots.splice(rdyIdx, 1)[0];
+    this.redrawBeam();
+    const j = this.active.find(a => a.id === s.jobId);
+    if (!j) return;
+    j.done++;
+    this.totalSamples++; this.yearSamples++;
+    this.sampTxt.setText(`⬡ ${this.totalSamples} samples`);
+    this.sampleLog.push({
+      year: this.year, cycle: this.cycle, cycleInYear: this.cycleInYear,
+      jobName: j.name, tech: j.tech, labType: j.labType,
+      blIdx: this.beamlineTechs.indexOf(j.tech),
+      samplesRequired: j.totalSamples,
+      completedAtSec: Math.round((Date.now() - this.cycleStartWall) / 1000),
+    });
+    const prefix = pdName ? `⚙ ${pdName}: ` : '';
+    if (j.done >= j.totalSamples) {
+      this.reputation += j.rep;
+      this.cycleProposalsDone++;
+      this.cycleRepEarned += j.rep;
+      this.repTxt.setText(`⭐ ${this.reputation} rep`);
+      this.flash(`${prefix}🎉 ${j.name} complete! +${j.rep} rep`, '#ffcc33');
+      this.proposalLog.push({
+        year: this.year, cycle: this.cycle, cycleInYear: this.cycleInYear,
+        name: j.name, tech: j.tech, labType: j.labType,
+        samplesRequired: j.totalSamples, samplesDone: j.totalSamples,
+        repEarned: j.rep, penalty: 0, outcome: 'completed',
+      });
+      this._releaseNpcSlot(j.npcSlot);
+      this.active.splice(this.active.indexOf(j), 1);
+      this.restockProposalHub();
+    } else {
+      this.flash(`${prefix}${j.name}: ${j.done}/${j.totalSamples} done${pdName ? '' : ' — collect next sample'}`, '#00dd88');
+    }
+    this.refreshJobs(); this.refreshNPCs();
+  }
+
   // ── Update ────────────────────────────────────────────────
   update(_,delta) {
     // ── Pause toggle (always active) ──
@@ -1779,6 +1835,7 @@ class GameScene extends Phaser.Scene {
     }
     // Measurement slots: tick while player is in control room; pause if they leave; beam dump freezes them
     if (!this.beamDump) {
+      const _l3AutoCollect = [];
       for(const s of this.measSlots){
         if(!s.toStage && s.started){
           const bl = this.beamlines[s.blIdx];
@@ -1786,10 +1843,18 @@ class GameScene extends Phaser.Scene {
             || this.postdocs.some(pd => this.isPointInSt(this.stDefs[bl.measKey], pd.x, pd.y));
           if(playerNearMeas) {
             s.remaining -= delta;
-            if(s.remaining <= 0) s.toStage='meas_ready';
+            if(s.remaining <= 0) {
+              s.toStage = 'meas_ready';
+              // Level 3: postdoc present auto-collects the result so the player doesn't have to return
+              const l3pd = this.postdocs.find(pd =>
+                pd.level >= 3 && this.isPointInSt(this.stDefs[bl.measKey], pd.x, pd.y));
+              if (l3pd) _l3AutoCollect.push({ blIdx: bl.idx, pdName: l3pd.name });
+            }
           }
         }
       }
+      // Process after the loop to avoid mutating measSlots mid-iteration
+      for (const { blIdx, pdName } of _l3AutoCollect) this._collectMeasResult(blIdx, pdName);
     }
 
     // ── Update station bar visuals ──
@@ -2453,7 +2518,7 @@ function _activeUpgradeNames(upg) {
   if ((upg.measCap    || 1)  > 1)     names.push('measCap');
   if ((upg.extraJobSlots||0) > 0)     names.push('extraJobSlots');
   if ((upg.postdocs   || 0)  > 0)     names.push('postdocs');
-  if ((upg.postdocLevel||1)  > 1)     names.push('postdocLevel');
+  if ((upg.postdocLevels||[]).some(l => l > 1)) names.push('postdocLevel2');
   return names;
 }
 

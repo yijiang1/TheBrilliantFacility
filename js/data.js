@@ -14,6 +14,17 @@ const VERSION = 'v0.1.4';
 
 const fmtK = n => n >= 1000 ? `${Math.round(n / 1000)}K` : String(n);
 
+const POSTDOC_NAMES = [
+  'Alex','Sam','Jordan','Casey','Morgan','Riley','Quinn','Avery',
+  'Drew','Hayden','Reese','Blake','Jamie','Cameron','Dylan',
+  'Skyler','Parker','Taylor','Mika','Elliot','Barry','Stefan','Mathew',
+];
+function pickPostdocName(usedNames = []) {
+  const pool = POSTDOC_NAMES.filter(n => !usedNames.includes(n));
+  const src = pool.length ? pool : POSTDOC_NAMES;
+  return src[Math.floor(Math.random() * src.length)];
+}
+
 let GW = Math.max(960, window.innerWidth);
 let GH = Math.max(600, window.innerHeight);
 const DPR = Math.min(window.devicePixelRatio || 1, 3);
