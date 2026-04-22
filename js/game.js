@@ -2326,19 +2326,38 @@ class GameScene extends Phaser.Scene {
     const originalTotal = j.totalSamples;
     j.unstarted = 0;
     j.npcGone   = true;
-    // Shrink totalSamples to what was actually collected — lets normal completion fire
-    // once the in-flight samples finish processing
-    j.totalSamples = originalTotal - lost;
-    // Rep penalty: proportional to fraction of samples abandoned
-    const repLoss = Math.max(1, Math.round(lost / originalTotal * j.rep * 0.5));
+    // Drop any samples from this job the player is currently holding
+    const heldBefore = this.held.length;
+    this.held = this.held.filter(h => h.jobId !== j.id);
+    const heldLost = heldBefore - this.held.length;
+    const totalLost = lost + heldLost;
+    // Shrink totalSamples to remaining in-flight samples — lets normal completion fire
+    j.totalSamples = originalTotal - totalLost;
+    // Rep penalty: proportional to fraction of samples lost
+    const repLoss = Math.max(1, Math.round(totalLost / originalTotal * j.rep * 0.5));
     this.reputation = Math.max(0, this.reputation - repLoss);
     this.repTxt.setText(`⭐ ${this.reputation} rep`);
     // Free the NPC slot — queued proposals do NOT auto-promote; player must accept via right panel
     this._releaseNpcSlot(j.npcSlot);
     j.npcSlot = -1;
-    // If no samples were ever collected, remove the job entirely
-    if (j.totalSamples <= 0) this.active.splice(this.active.indexOf(j), 1);
-    this.flash(`${j.name}'s user left — ${lost} sample${lost>1?'s':''} lost  −${repLoss} rep`, '#ff4433');
+    // Finalise job: remove if nothing remains, or complete if all remaining work was in-hand
+    if (j.totalSamples <= 0) {
+      this.active.splice(this.active.indexOf(j), 1);
+    } else if (j.done >= j.totalSamples) {
+      // No in-flight samples left — the held samples were the last ones; complete the job now
+      this.reputation += j.rep;
+      this.cycleProposalsDone++;
+      this.cycleRepEarned += j.rep;
+      this.proposalLog.push({
+        year: this.year, cycle: this.cycle, cycleInYear: this.cycleInYear,
+        name: j.name, tech: j.tech, labType: j.labType || 'dry',
+        samplesRequired: originalTotal, samplesDone: j.done,
+        repEarned: j.rep, penalty: repLoss, outcome: 'completed',
+      });
+      this.active.splice(this.active.indexOf(j), 1);
+      this.restockProposalHub();
+    }
+    this.flash(`${j.name}'s user left — ${totalLost} sample${totalLost>1?'s':''} lost  −${repLoss} rep`, '#ff4433');
     this.refreshNPCs();
     this.refreshJobs();
   }
