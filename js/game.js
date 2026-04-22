@@ -328,7 +328,7 @@ class GameScene extends Phaser.Scene {
       prepCap:1, measCap:1,
       prepSpeedMap:{prep:1.0,prep2:1.0}, measSpeedMap:[1.0,1.0,1.0,1.0],
       extraJobSlots:0, postdocs:0, postdocLevels:[], postdocNames:[],
-      ringMaint:false,
+      ringMaint:false, npcPositioning:false,
     };
     // Migrate old saves: single postdocLevel → per-postdoc arrays
     if (!Array.isArray(this.upgrades.postdocLevels)) {
@@ -381,7 +381,7 @@ class GameScene extends Phaser.Scene {
       };
       if (this.active.length < INITIAL_ACTIVE) {
         this._rollJobDurations(job);
-        job.npcSlot = this._claimNpcSlot();
+        job.npcSlot = this._claimNpcSlot(job);
         this.active.push(job);
       } else {
         this.commitQueue.push(job);
@@ -871,7 +871,7 @@ class GameScene extends Phaser.Scene {
     this.boardSliderPanel = panel;
   }
 
-  drawSt(key, hot, jobHex, busy) {
+  drawSt(key, hot, jobHex, _busy) {
     const st=this.stDefs[key], g=this.stGfx[key];
     g.clear();
     if (st.w <= 0 || st.h <= 0) return; // Skip rendering small boxes for whole-room zones
@@ -932,6 +932,17 @@ class GameScene extends Phaser.Scene {
     const angle  = angles[Math.floor(Math.random() * angles.length)];
     const r      = this._npcMinR + Math.random() * (this._npcMaxR - this._npcMinR);
     return { x: this.CX + Math.cos(angle) * r, y: this.CY + Math.sin(angle) * r };
+  }
+
+  // With the npcPositioning upgrade: spawn halfway between the job's prep lab and its beamline hutch.
+  _pickNpcPosForJob(job) {
+    if (!this.upgrades.npcPositioning || !job) return this._pickNpcPos();
+    const prepKey = job.labType === 'wet' ? 'prep' : 'prep2';
+    const prep    = this.stDefs[prepKey];
+    const bl      = this.beamlines.find(b => this.beamlineTechs[b.idx] === job.tech);
+    if (!prep || !bl) return this._pickNpcPos();
+    const hutch = this.stDefs[bl.lockKey];
+    return { x: (prep.x + hutch.boxCX) / 2, y: (prep.y + hutch.boxCY) / 2 };
   }
 
   refreshNPCs() {
@@ -1521,9 +1532,9 @@ class GameScene extends Phaser.Scene {
     if (slotData.linkedQueueIdx >= 0) {
       const qIdx = slotData.linkedQueueIdx;
       if (!this.commitQueue[qIdx]) return;
-      const freeSlot = this._claimNpcSlot();
-      if (freeSlot < 0) { this.flash('No free user slot!','#ff4433'); return; }
       const p = this.commitQueue.splice(qIdx, 1)[0];
+      const freeSlot = this._claimNpcSlot(p);
+      if (freeSlot < 0) { this.flash('No free user slot!','#ff4433'); return; }
       // commitQueue stores full job objects (built at game start) — reuse and re-roll durations
       p.done = 0;
       p.unstarted = p.totalSamples;
@@ -1541,8 +1552,6 @@ class GameScene extends Phaser.Scene {
     if (slotData.linkedPendingIdx >= 0) {
       const pIdx = slotData.linkedPendingIdx;
       if (!this.pending[pIdx]) return;
-      const freeSlot = this._claimNpcSlot();
-      if (freeSlot < 0) { this.flash('No free user slot!','#ff4433'); return; }
       const p = this.pending.splice(pIdx, 1)[0];
       const job = {
         id: this.jobIdCtr++, name: p.name, tech: p.tech,
@@ -1550,8 +1559,10 @@ class GameScene extends Phaser.Scene {
         done: 0, unstarted: p.samples,
         committed: false,   // rapid review — no rep penalty
         labType: p.labType || 'dry',
-        npcSlot: freeSlot,
       };
+      const freeSlot = this._claimNpcSlot(job);
+      if (freeSlot < 0) { this.flash('No free user slot!','#ff4433'); return; }
+      job.npcSlot = freeSlot;
       this._rollJobDurations(job);
       this.active.push(job);
       this.refreshJobs();
@@ -2011,11 +2022,8 @@ class GameScene extends Phaser.Scene {
       if (j.npcGone || j.leaveMs === undefined || j.npcSlot < 0) continue;
       const npc = this.npcs[j.npcSlot];
       if (!npc) continue;
-      // Only tick down while uncollected samples remain; freeze bar once all collected
-      if (j.unstarted > 0) {
-        j.leaveMs -= delta;
-        if (j.leaveMs <= 0) { this.userNpcLeaves(j); continue; }
-      }
+      j.leaveMs -= delta;
+      if (j.leaveMs <= 0) { this.userNpcLeaves(j); continue; }
       const frac = 1 - Math.max(0, j.leaveMs) / j.leaveMsTotal;
       const col = frac > 0.75 ? 0xff4433 : frac > 0.5 ? 0xffaa33 : 0x44cc88;
       npc.leaveBarFill.setDisplaySize(Math.max(1, 28 * frac), 4).setFillStyle(col);
@@ -2025,7 +2033,7 @@ class GameScene extends Phaser.Scene {
     if (this.doingExpSetup && this.activeExpSetupIdx >= 0) {
       const bl = this.beamlines[this.activeExpSetupIdx];
       const lock = this.stDefs[bl.lockKey];
-      const nearLock = this.isPointInSt(lock, this.px, this.py)
+      const nearLock = Phaser.Math.Distance.Between(this.px, this.py, lock.boxCX, lock.boxCY) < 62
         || this.postdocs.some(pd => pd.state === 'working'
             && pd.assignedAction?.type === 'expSetup'
             && pd.assignedAction?.blIdx === this.activeExpSetupIdx);
@@ -2112,7 +2120,7 @@ class GameScene extends Phaser.Scene {
     if(this.doingExpSetup && this.activeExpSetupIdx >= 0){
       const _lockSt = this.stDefs[this.beamlines[this.activeExpSetupIdx].lockKey];
       const _lbx = _lockSt.boxCX - 30, _lby = _lockSt.boxCY + 26;
-      const _nearLock = this.isPointInSt(_lockSt, this.px, this.py);
+      const _nearLock = Phaser.Math.Distance.Between(this.px, this.py, _lockSt.boxCX, _lockSt.boxCY) < 62;
       this.expSetupBar.setPosition(_lbx, _lby)
         .setFraction(this.expSetupProg)
         .setFillStyle(_nearLock ? 0xdd4433 : 0xccaa44)
@@ -2195,7 +2203,7 @@ class GameScene extends Phaser.Scene {
   }
 
   // Update station processing bar visuals
-  updateStationBars(now) {
+  updateStationBars(_now) {
     const barKeys = [...this.prepKeys, ...this.beamlines.map(b => b.measKey)];
     const hasAuto = this.upgrades && this.upgrades.automation;
     
@@ -2267,16 +2275,16 @@ class GameScene extends Phaser.Scene {
     this._ft=this.time.delayedCall(2800,()=>this.statusTxt.setText(''));
   }
 
-  // Claim the first free NPC slot index for a newly-activated job
-  _claimNpcSlot() {
+  // Claim the first free NPC slot index for a newly-activated job.
+  // Pass the job so the npcPositioning upgrade can place the NPC in the right spot.
+  _claimNpcSlot(job = null) {
     for (let i = 0; i < this.npcSlotUsed.length; i++) {
       if (!this.npcSlotUsed[i]) {
         this.npcSlotUsed[i] = true;
-        // Re-randomise this slot's position so each spawn is at a fresh location.
-        // Guard: npcs/validAngles aren't ready during the early create() init pass;
+        // Re-position on claim. Guard: npcs/validAngles aren't ready during early create() init pass;
         // buildUserNPCs() handles initial placement for those slots.
         if (this.npcs && this._npcValidAngles) {
-          const pos = this._pickNpcPos();
+          const pos = this._pickNpcPosForJob(job);
           this.npcPos[i] = pos;
           this.npcs[i].grp.setPosition(pos.x, pos.y);
         }

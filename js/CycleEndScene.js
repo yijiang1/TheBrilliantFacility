@@ -8,7 +8,7 @@ class CycleEndScene extends Phaser.Scene {
     this.upgrades = JSON.parse(JSON.stringify(d.upgrades || {
       prepCap:1, measCap:1,
       prepSpeedMap:{prep:1.0,prep2:1.0}, measSpeedMap:[1.0,1.0,1.0,1.0],
-      extraJobSlots:0, postdocs:0, postdocLevels:[], postdocNames:[], ringMaint:false,
+      extraJobSlots:0, postdocs:0, postdocLevels:[], postdocNames:[], ringMaint:false, npcPositioning:false,
     }));
     // Migrate old single-value format from saved games
     if (typeof this.upgrades.prepSpeedMap !== 'object' || Array.isArray(this.upgrades.prepSpeedMap)) {
@@ -303,6 +303,9 @@ class CycleEndScene extends Phaser.Scene {
       { key:'ringMaint', label:'Ring Maintenance', desc:'Restores +5% ring stability/cycle\n(net +3% after −2 decay)', cost:80000,
         show:()=>d.year > 1,
         canBuy:()=>!this.upgrades.ringMaint,      apply:()=>this.upgrades.ringMaint=true },
+      { key:'npcPositioning', label:'User Coordination', desc:'Users wait halfway between their\nprep lab and beamline — less walking', cost:100000,
+        show:()=>d.year > 1,
+        canBuy:()=>!this.upgrades.npcPositioning, apply:()=>this.upgrades.npcPositioning=true },
     ];
 
     const visibleUpgrades = UPGRADES.filter(u => !u.show || u.show());
