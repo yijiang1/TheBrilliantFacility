@@ -528,6 +528,8 @@ tr:hover td { background:#f4f8ff; }
     <div class="panel" id="pt-charts-panel" style="display:none">
       <div class="panel-title">Samples per Cycle (colour = year)</div>
       <canvas id="chart-pt-samples" height="160"></canvas>
+      <div class="panel-title" style="margin-top:16px;">Proposals Completed per Cycle (colour = year)</div>
+      <canvas id="chart-pt-proposals" height="130"></canvas>
       <div class="panel-title" style="margin-top:16px;">Rep Earned &amp; Funding Over Time</div>
       <canvas id="chart-pt-trends" height="160"></canvas>
     </div>
@@ -1435,6 +1437,38 @@ function renderPlaytest() {
       scales: {
         y: { beginAtZero: true, title: { display: true, text: 'samples' } },
         x: { ticks: { maxRotation: 45 } }
+      }
+    }
+  });
+
+  // Proposals completed chart
+  chart('chart-pt-proposals', {
+    type: 'bar',
+    data: {
+      labels: ptData.map(r => 'Y' + r.year + 'C' + r.cycleInYear),
+      datasets: [
+        {
+          label: 'Completed',
+          data:  ptData.map(r => r.proposalsDone ?? 0),
+          backgroundColor: ptData.map(r => YEAR_COLORS[(r.year - 1) % YEAR_COLORS.length]),
+          borderWidth: 0,
+          stack: 'p',
+        },
+        {
+          label: 'Partial',
+          data:  ptData.map(r => r.proposalsPartial ?? 0),
+          backgroundColor: ptData.map(r => YEAR_COLORS[(r.year - 1) % YEAR_COLORS.length].replace('0.75', '0.3')),
+          borderWidth: 0,
+          stack: 'p',
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8 } } },
+      scales: {
+        y: { beginAtZero: true, stacked: true, title: { display: true, text: 'proposals' }, ticks: { stepSize: 1 } },
+        x: { stacked: true, ticks: { maxRotation: 45 } }
       }
     }
   });

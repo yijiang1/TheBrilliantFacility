@@ -37,7 +37,8 @@ class CycleEndScene extends Phaser.Scene {
       const newFunding = 200000 + Math.floor((d.reputation||0) * 500);
       const postdocCost = (this.upgrades.postdocs || 0) * 100000;
       this.funding = carryover + newFunding - postdocCost;
-      this.newFundingMsg = `New year grant: 💰${fmtK(newFunding)}  (carryover: 💰${fmtK(carryover)}${postdocCost > 0 ? `  postdocs: -💰${fmtK(postdocCost)}` : ''})`;
+      const breakdown = `carryover: 💰${fmtK(carryover)}${postdocCost > 0 ? `  postdocs: -💰${fmtK(postdocCost)}` : ''}`;
+      this.newFundingMsg = `New year grant: 💰${fmtK(newFunding)}\n${breakdown}`;
     } else {
       this.funding = d.funding || 0;
       this.newFundingMsg = null;
@@ -110,12 +111,6 @@ class CycleEndScene extends Phaser.Scene {
     this.add.text(LX,nextY,out.txt,{font:'13px Courier New',color:'#6a4400'});
     nextY += 28;
 
-    // New year funding banner
-    if(this.newFundingMsg){
-      this.add.rectangle(LX-8,nextY,320,26,0xfef8e0).setOrigin(0,0).setStrokeStyle(1,0xccaa44);
-      this.add.text(LX+4,nextY+11,this.newFundingMsg,{font:'12px Courier New',color:'#7a5500'}).setOrigin(0,0.5);
-      nextY += 40;
-    }
 
     // ── BETWEEN-CYCLE ACTION CHOICE ──────────────────────────
     const AY = nextY;
@@ -260,6 +255,8 @@ class CycleEndScene extends Phaser.Scene {
 
     this.boughtThisCycle = new Set();
 
+    const nextPostdocName = pickPostdocName(this.upgrades.postdocNames || []);
+
     const UPGRADES = [
       // ── Per-lab prep speed (2 cards) ──
       ...PREP_LABS.map(lab => ({
@@ -288,13 +285,20 @@ class CycleEndScene extends Phaser.Scene {
         apply:  () => { this.upgrades.measSpeedMap[bl.idx] = Math.max(0.50, this.upgrades.measSpeedMap[bl.idx] - 0.05); },
       })),
       // ── Other upgrades ──
-      { key:'extraJob',  label:'Hire Postdoc',    desc:'+1 postdoc NPC helper', cost:100000,
+      { key:'extraJob',  label:'Hire Postdoc',
+        desc:()=>{
+          const names = this.upgrades.postdocNames || [];
+          if (names.includes(nextPostdocName)) return `${nextPostdocName} is on your team`;
+          return names.length
+            ? `${nextPostdocName} joins\nTeam: ${names.join(', ')}`
+            : `${nextPostdocName} joins your lab`;
+        },
+        ownedLabel:'✓ OWNED', cost:100000,
         oncePerCycle: true,
         canBuy:()=>!this.boughtThisCycle.has('extraJob'),
         apply:()=>{
           this.upgrades.postdocs = (this.upgrades.postdocs || 0) + 1;
-          const name = pickPostdocName(this.upgrades.postdocNames || []);
-          (this.upgrades.postdocNames  = this.upgrades.postdocNames  || []).push(name);
+          (this.upgrades.postdocNames  = this.upgrades.postdocNames  || []).push(nextPostdocName);
           (this.upgrades.postdocLevels = this.upgrades.postdocLevels || []).push(1);
         } },
       { key:'prepCap',   label:'Prep Room × 2',   desc:'Handle 2 samples at once',     cost:150000,
@@ -317,11 +321,22 @@ class CycleEndScene extends Phaser.Scene {
     const CARD_H  = 86;
     const ROW_H   = CARD_H + 12;
 
+    // New year grant banner (year-end only)
+    let cardOffsetY = 26;
+    if (this.newFundingMsg) {
+      const [grantLine, breakdownLine] = this.newFundingMsg.split('\n');
+      const BW = GW - RX - 8;
+      this.add.rectangle(RX-8, SY+18, BW, 36, 0xfef8e0).setOrigin(0,0).setStrokeStyle(1,0xccaa44);
+      this.add.text(RX+6, SY+24, grantLine,    {font:'bold 12px Courier New', color:'#7a5500'}).setOrigin(0,0);
+      this.add.text(RX+6, SY+39, breakdownLine,{font:'11px Courier New',      color:'#9a7520'}).setOrigin(0,0);
+      cardOffsetY = 64;
+    }
+
     visibleUpgrades.forEach((u, i) => {
       const col = i % 2;
       const row = Math.floor(i / 2);
       const ux  = RX + col * (CARD_W + COL_GAP);
-      const uy  = SY + 26 + row * ROW_H;
+      const uy  = SY + cardOffsetY + row * ROW_H;
 
       const bg    = this.add.rectangle(ux, uy, CARD_W, CARD_H, 0xfafcff)
                              .setOrigin(0, 0).setStrokeStyle(1, 0xaabbcc);
@@ -335,7 +350,7 @@ class CycleEndScene extends Phaser.Scene {
                       {font:'bold 12px Courier New', color:'#9a6600'});
       const btn   = this.add.text(ux + CARD_W - 10, uy + CARD_H / 2 + 6, '[ BUY ]',
                       {font:'bold 13px Courier New', color:'#0a8a5a'}).setOrigin(1, 0.5);
-      const ownedLabel = typeof u.desc === 'function' ? '✗ MAX' : '✓ OWNED';
+      const ownedLabel = u.ownedLabel ?? (typeof u.desc === 'function' ? '✗ MAX' : '✓ OWNED');
       const owned = this.add.text(ux + CARD_W - 10, uy + CARD_H / 2 + 6, ownedLabel,
                       {font:'bold 12px Courier New', color:'#4a9a6a'}).setOrigin(1, 0.5).setAlpha(0);
 

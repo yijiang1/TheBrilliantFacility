@@ -15,6 +15,24 @@ As the Facility Director, you race between laboratory stations, collect and proc
 
 Open [`BrilliantFacility.html`](BrilliantFacility.html) in any modern browser. No install needed.
 
+## Developer Mode
+
+Add `?dev` to the URL to enable the dev panel during gameplay:
+
+```
+BrilliantFacility.html?dev
+```
+
+This adds a small overlay in the corner with:
+
+| Button | Action |
+|--------|--------|
+| `+$100k` | Add 100K funding |
+| `+20 ⭐` | Add 20 reputation |
+| `+1 Cy` | Skip to next cycle |
+| `+1 Yr` | Skip to next year (applies grant) |
+| `1×` | Cycle through time speeds: 1×, 2×, 4×, 8× |
+
 ## Design Pillars
 
 - **Brilliant** — Every mechanic is grounded in real synchrotron science.
