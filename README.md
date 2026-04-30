@@ -33,6 +33,19 @@ This adds a small overlay in the corner with:
 | `+1 Yr` | Skip to next year (applies grant) |
 | `1×` | Cycle through time speeds: 1×, 2×, 4×, 8× |
 
+## AI Playtesting Bot
+
+`js/bot.js` is always loaded. Open the browser console and use:
+
+| Command | Action |
+|---------|--------|
+| `_bot.start()` | Bot takes over — keyboard is suppressed |
+| `_bot.stop()` | Return control to the player |
+| `_bot.stats()` | Print cycle metrics to the console |
+| `_bot.speed(n)` | Set time multiplier (requires `?dev`; e.g. `_bot.speed(4)`) |
+
+The bot uses a greedy priority queue: collect results → start scans → exp setup → prep → collect from NPCs. It accepts all proposals automatically. Watch the overlay label to see what it's prioritising each frame — long stretches on any one goal indicate a design bottleneck.
+
 ## Design Pillars
 
 - **Brilliant** — Every mechanic is grounded in real synchrotron science.

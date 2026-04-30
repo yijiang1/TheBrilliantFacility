@@ -1903,10 +1903,38 @@ class GameScene extends Phaser.Scene {
         // Auto-slide: if we pressed ONLY one axis against a diagonal wall and it failed,
         // synthesize the diagonal vector perfectly along the 45-degree angle
         if (!movedX && !movedY) {
-          if (stepX === 0 && stepY !== 0) {
-            if (!tryMove(Math.abs(stepY), stepY)) tryMove(-Math.abs(stepY), stepY);
-          } else if (stepY === 0 && stepX !== 0) {
-            if (!tryMove(stepX, Math.abs(stepX))) tryMove(stepX, -Math.abs(stepX));
+          let slid = false;
+
+          // Near inner ring → slide tangentially in the player's intended direction.
+          const _toCenter = Phaser.Math.Distance.Between(this.px, this.py, this.CX, this.CY);
+          if (_toCenter < this.RING_RAD + 50) {
+            const _rx = (this.px - this.CX) / _toCenter;
+            const _ry = (this.py - this.CY) / _toCenter;
+            const _ns = Math.max(Math.abs(stepX), Math.abs(stepY));
+            if ((dx * (-_ry) + dy * _rx) >= 0) slid = tryMove(-_ry * _ns,  _rx * _ns);
+            if (!slid)                          slid = tryMove( _ry * _ns, -_rx * _ns);
+          }
+
+          // 45° diagonal slide for beamline room walls.
+          // Normalise by 0.707 so the diagonal step has the same magnitude as the
+          // original single-axis step (prevents ~41% speed spike at room corners).
+          if (!slid) {
+            const _s = Math.max(Math.abs(stepX), Math.abs(stepY)) * 0.707;
+            if (stepX === 0 && stepY !== 0) {
+              slid = tryMove( _s, Math.sign(stepY) * _s);
+              if (!slid) slid = tryMove(-_s, Math.sign(stepY) * _s);
+            } else if (stepY === 0 && stepX !== 0) {
+              slid = tryMove(Math.sign(stepX) * _s,  _s);
+              if (!slid) slid = tryMove(Math.sign(stepX) * _s, -_s);
+            }
+          }
+
+          // Last resort: if stuck in a beamline room, nudge radially inward.
+          // Only fires when nothing else worked, preventing double-movement.
+          if (!slid && Phaser.Math.Distance.Between(this.px, this.py, this.CX, this.CY) > this.PREP_RAD - 12) {
+            const nudgeAngle = Math.atan2(this.CY - this.py, this.CX - this.px);
+            const _ns = Math.max(Math.abs(stepX), Math.abs(stepY));
+            tryMove(Math.cos(nudgeAngle) * _ns, Math.sin(nudgeAngle) * _ns);
           }
         }
       }
@@ -2583,6 +2611,7 @@ const game = new Phaser.Game({
     resolution:DPR,
   },
 });
+window.game = game;
 
 window.addEventListener('resize', () => {
   game.scale.refresh();
