@@ -62,6 +62,8 @@ class ProposalReviewScene extends Phaser.Scene {
       .setOrigin(0.5).setDepth(5);
 
     this.refreshCards();
+
+    if (window._bot?.enabled) window._bot._onProposalReviewReady(this);
   }
 
   generateProposals(n) {
@@ -164,6 +166,21 @@ class ProposalReviewScene extends Phaser.Scene {
       this.startBtn.on('pointerout',  ()=>this.startBtn.setStyle({color:'#0a7a44'}));
       this.startBtn.on('pointerdown', ()=>this.startCycle());
     }
+  }
+
+  // ── Bot API ──────────────────────────────────────────────────
+
+  // Replace the current selection with the provided index array.
+  botSelectProposals(indices) {
+    this.selected = indices.filter(i => i >= 0 && i < this.proposals.length);
+    this.refreshCards();
+  }
+
+  // Begin the cycle. No-op if nothing is selected.
+  botStartCycle() {
+    if (this.selected.length === 0) return false;
+    this.startCycle();
+    return true;
   }
 
   startCycle() {

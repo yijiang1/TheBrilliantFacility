@@ -233,7 +233,7 @@ class CycleEndScene extends Phaser.Scene {
           }
         });
       }
-      this.actionCards.push({bg, icon, lbl, dsc, result});
+      this.actionCards.push({bg, icon, lbl, dsc, result, act, completeChoice});
     });
 
     // ── UPGRADE SHOP (right side) ────────────────────────────
@@ -422,6 +422,51 @@ class CycleEndScene extends Phaser.Scene {
 
     this.add.text(GW/2,GH-12,'THE BRILLIANT FACILITY  —  M1 Prototype',
       {font:'12px Courier New',color:'#aabbcc'}).setOrigin(0.5);
+
+    if (window._bot?.enabled) window._bot._onCycleSceneReady(this);
+  }
+
+  // ── Bot API ───────────────────────────────────────────────────
+
+  // Choose between-cycle action by key ('paper' or 'train').
+  // For 'train' with multiple eligible postdocs, picks the lowest-level one
+  // so all postdocs level up evenly rather than maxing a single one.
+  botChooseAction(key) {
+    if (this.actionChosen) return false;
+    const cardIdx = this.actionCards.findIndex(c => c.act?.key === key);
+    if (cardIdx < 0) return false;
+    const { act, completeChoice } = this.actionCards[cardIdx];
+    if (!act.available) return false;
+    if (act.selectMode) {
+      const best = act.selectOptions.reduce((a, b) =>
+        (this.upgrades.postdocLevels[a.pdIdx] ?? 0) <= (this.upgrades.postdocLevels[b.pdIdx] ?? 0) ? a : b
+      );
+      completeChoice(act.applySelect(best.pdIdx));
+    } else {
+      completeChoice(act.apply());
+    }
+    return true;
+  }
+
+  // Attempt to purchase one upgrade by key. Returns true if purchased.
+  botBuyUpgrade(key) {
+    const entry = this.upgButtons.find(e => e.u.key === key);
+    if (!entry || !entry.u.canBuy()) return false;
+    if (this.funding - this.spent < entry.u.cost) return false;
+    this.spent += entry.u.cost;
+    entry.u.apply();
+    if (entry.u.oncePerCycle) this.boughtThisCycle.add(entry.u.key);
+    this.fundingTxt.setText(`💰 ${fmtK(this.funding - this.spent)} available`);
+    entry.dsc.setText(typeof entry.u.desc === 'function' ? entry.u.desc() : entry.u.desc);
+    this.refreshUpgButtons();
+    return true;
+  }
+
+  // Advance to the next scene. Only works after an action has been chosen.
+  botContinue() {
+    if (!this.actionChosen) return false;
+    this.nextScene();
+    return true;
   }
 
   refreshUpgButtons(){

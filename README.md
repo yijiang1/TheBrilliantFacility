@@ -44,7 +44,20 @@ This adds a small overlay in the corner with:
 | `_bot.stats()` | Print cycle metrics to the console |
 | `_bot.speed(n)` | Set time multiplier (requires `?dev`; e.g. `_bot.speed(4)`) |
 
-The bot uses a greedy priority queue: collect results → start scans → exp setup → prep → collect from NPCs. It accepts all proposals automatically. Watch the overlay label to see what it's prioritising each frame — long stretches on any one goal indicate a design bottleneck.
+The bot automates everything: in-cycle movement (greedy priority queue over measurement → prep → NPC collection), proposal selection between cycles, and upgrade purchases. Watch the overlay label to see what it's prioritising — sustained time on any one goal reveals a design bottleneck.
+
+### RL Training
+
+`rl/` contains a headless Python simulation of the game loop that trains a policy to outperform the hand-coded bot:
+
+```bash
+cd rl
+pip install -r requirements.txt
+python train.py          # BC pre-training + PPO fine-tuning (~3 min)
+python train.py --eval-only   # evaluate a saved model
+```
+
+The BC+PPO agent earns ~62 rep/cycle vs ~41 for the hand-coded heuristic (+50%). See [`GDD/9. Tech Stack & Roadmap.md`](GDD/9.%20Tech%20Stack%20%26%20Roadmap.md) for full details.
 
 ## Design Pillars
 

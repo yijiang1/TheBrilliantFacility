@@ -18,15 +18,16 @@ const DECIDE_MS   = 250;  // ms — how often to re-evaluate the current goal
 // ── Main Bot Class ─────────────────────────────────────────────
 class FacilityBot {
   constructor() {
-    this.enabled      = false;
-    this._goal        = null;   // { label, x, y, interact } — current navigation target
-    this._decideTimer = 0;
-    this._dbgGfx      = null;
-    this._overlay     = null;
-    this._overlayGoal = null;
-    this._overlayStat = null;
-    this._listener    = null;
-    this._scene       = null;
+    this.enabled           = false;
+    this._goal             = null;   // { label, x, y, interact } — current navigation target
+    this._decideTimer      = 0;
+    this._dbgGfx           = null;
+    this._overlay          = null;
+    this._overlayGoal      = null;
+    this._overlayStat      = null;
+    this._listener         = null;
+    this._scene            = null;
+    this._handledCycleScene = null;  // tracks which CycleEndScene instance we've already acted on
   }
 
   // ── Public API ─────────────────────────────────────────────
@@ -67,6 +68,7 @@ class FacilityBot {
     if (this._overlay) { this._overlay.forEach(o => o.destroy()); this._overlay = null; }
     this._overlayGoal = null; this._overlayStat = null;
     this._scene = null;
+    this._handledCycleScene = null;
     console.log('[Bot] Stopped — keyboard restored');
   }
 
@@ -170,7 +172,9 @@ class FacilityBot {
       return { label: `exp setup BL-${s.activeExpSetupIdx+1}`, x: st.boxCX, y: st.boxCY, interact: false };
     }
 
-    // 6. Trigger exp setup — holding a prepped sample near the right beamline
+    // 6. Trigger exp setup if beamline is free; if occupied, defer to lower priorities
+    //    so idle time is used productively (collect/deposit) rather than just waiting.
+    let waitHutchGoal = null;
     const preppedItem = s.held.find(h => h.stage === 'prepped');
     if (preppedItem) {
       const job = s.active.find(a => a.id === preppedItem.jobId);
@@ -183,8 +187,8 @@ class FacilityBot {
           if (!occupied) {
             return { label: `hutch BL-${blIdx+1}`, x: st.boxCX, y: st.boxCY, interact: true };
           }
-          // Beamline occupied — wait near hutch
-          return { label: `wait hutch BL-${blIdx+1}`, x: st.boxCX, y: st.boxCY, interact: false };
+          // Beamline occupied — save hutch as last-resort fallback, try useful work first
+          waitHutchGoal = { label: `wait hutch BL-${blIdx+1}`, x: st.boxCX, y: st.boxCY, interact: false };
         }
       }
     }
@@ -197,9 +201,15 @@ class FacilityBot {
       }
     }
 
-    // 8. Deposit raw sample at correct prep table
-    const rawItem = s.held.find(h => h.stage === 'raw');
-    if (rawItem) {
+    // 8. Deposit raw sample — prefer the raw item whose prep table has capacity
+    //    (avoids routing to a full table when mixed wet/dry samples are held)
+    const rawItems = s.held.filter(h => h.stage === 'raw');
+    if (rawItems.length > 0) {
+      const depositable = rawItems.find(h => {
+        const pk = h.labType === 'wet' ? 'prep' : 'prep2';
+        return s.prepSlotsFor[pk].length < s.prepCap;
+      });
+      const rawItem = depositable ?? rawItems[0];
       const pk = rawItem.labType === 'wet' ? 'prep' : 'prep2';
       const st = s.stDefs[pk];
       if (s.prepSlotsFor[pk].length < s.prepCap) {
@@ -209,16 +219,36 @@ class FacilityBot {
       return { label: `wait ${rawItem.labType} lab`, x: st.x, y: st.y, interact: false };
     }
 
-    // 9. Collect raw sample from NPC — prioritise jobs whose users are leaving soonest
+    // 9. Collect raw sample — batch by lab type, but urgency overrides batching
+    //    Batching reduces prep-table round trips when already holding same-type samples.
     if (s.held.length < 3) {
-      const urgentJob = s.active
-        .filter(j => j.unstarted > 0 && !j.npcGone && j.npcSlot >= 0)
-        .sort((a, b) => (a.leaveMs ?? Infinity) - (b.leaveMs ?? Infinity))[0];
-      if (urgentJob) {
+      const available = s.active.filter(j => j.unstarted > 0 && !j.npcGone && j.npcSlot >= 0);
+      if (available.length > 0) {
+        const heldRaw = s.held.filter(h => h.stage === 'raw');
+        const dominantType = heldRaw.length > 0
+          ? (heldRaw.filter(h => h.labType === 'wet').length >= heldRaw.filter(h => h.labType === 'dry').length
+              ? 'wet' : 'dry')
+          : null;
+        const URGENT_MS = 20000; // NPCs leaving within 20s get priority regardless of type
+        available.sort((a, b) => {
+          const aUrgent = (a.leaveMs ?? Infinity) < URGENT_MS;
+          const bUrgent = (b.leaveMs ?? Infinity) < URGENT_MS;
+          if (aUrgent !== bUrgent) return aUrgent ? -1 : 1;
+          if (dominantType) {
+            const aMatch = a.labType === dominantType;
+            const bMatch = b.labType === dominantType;
+            if (aMatch !== bMatch) return aMatch ? -1 : 1;
+          }
+          return (a.leaveMs ?? Infinity) - (b.leaveMs ?? Infinity);
+        });
+        const urgentJob = available[0];
         const pos = s.npcPos[urgentJob.npcSlot];
         return { label: `NPC: ${urgentJob.name}`, x: pos.x, y: pos.y, interact: true };
       }
     }
+
+    // Fallback: hutch wait if beamline was occupied and nothing else was actionable
+    if (waitHutchGoal) return waitHutchGoal;
 
     // Nothing actionable — stay put
     return null;
@@ -228,13 +258,64 @@ class FacilityBot {
   _tryAcceptProposals(s) {
     const effMax = 5 + (s.upgrades?.extraJobSlots || 0);
     if (s.active.length >= effMax) return;
+
+    // Throttle NPC arrivals: each accepted proposal immediately summons an NPC
+    // whose leave timer starts ticking. Accepting all proposals at once means
+    // every NPC competes for the bot's attention simultaneously, and latecomers
+    // depart before the bot can reach them. Cap concurrent waiting NPCs so the
+    // bot can realistically serve each one before they leave.
+    const npcWaiting = s.active.filter(
+      j => j.unstarted > 0 && !j.npcGone && j.npcSlot >= 0
+    ).length;
+    if (npcWaiting >= 2) return;
+
+    // Committed queue items are already promised — always accept first
     for (let i = 0; i < (s.jobSlots?.length ?? 0); i++) {
       const slot = s.jobSlots[i];
-      if (slot && (slot.linkedPendingIdx >= 0 || slot.linkedQueueIdx >= 0)) {
+      if (slot && slot.linkedQueueIdx >= 0) {
         s.acceptProposalBySlot(i);
-        return; // one at a time to avoid state conflicts
+        return;
       }
     }
+
+    // Among pending (rapid-review) proposals, accept the highest-scored one
+    let bestScore = -Infinity;
+    let bestSlot  = -1;
+    for (let i = 0; i < (s.jobSlots?.length ?? 0); i++) {
+      const slot = s.jobSlots[i];
+      if (!slot || slot.linkedPendingIdx < 0) continue;
+      const p = s.pending?.[slot.linkedPendingIdx];
+      if (!p) continue;
+      const score = this._scorePending(s, p);
+      if (score > bestScore) { bestScore = score; bestSlot = i; }
+    }
+    if (bestSlot >= 0) s.acceptProposalBySlot(bestSlot);
+  }
+
+  // Score a pending proposal — higher is better.
+  _scorePending(s, p) {
+    let score = p.rep; // base: raw reputation value
+
+    // Prefer the lab type that is currently underrepresented in active jobs
+    // so we don't pile up on one prep table
+    const wetCount = s.active.filter(j => j.labType === 'wet').length;
+    const dryCount = s.active.filter(j => j.labType === 'dry').length;
+    if (p.labType === 'wet' && wetCount <= dryCount) score += 8;
+    if (p.labType === 'dry' && dryCount <= wetCount) score += 8;
+
+    // Prefer proposals whose beamline has free measurement capacity
+    const blIdx = s.beamlineTechs?.indexOf(p.tech) ?? -1;
+    if (blIdx >= 0) {
+      const used = s.measSlots.filter(ms => ms.blIdx === blIdx).length;
+      const cap  = s.measCap ?? 1;
+      if (used < cap)  score += 10; // beamline has room — take it now
+      if (used >= cap) score -=  8; // already full — lower priority
+    }
+
+    // Small urgency bump for proposals close to expiring (grab before they vanish)
+    if ((p.timeLeft ?? Infinity) < 10) score += 5;
+
+    return score;
   }
 
   // ── Movement (mirrors postdoc movement logic) ───────────────
@@ -318,8 +399,9 @@ class FacilityBot {
     if (!this._overlayGoal) return;
     const g = this._goal;
     this._overlayGoal.setText(`→ ${g ? g.label : 'idle'}`);
+    const npcWaiting = s.active.filter(j => j.unstarted > 0 && !j.npcGone && j.npcSlot >= 0).length;
     this._overlayStat.setText(
-      `rep: ${s.reputation}  |  samples: ${s.totalSamples}  |  held: ${s.held.length}/3`
+      `rep: ${s.reputation}  |  samples: ${s.totalSamples}  |  held: ${s.held.length}/3  |  npc: ${npcWaiting}`
     );
   }
 
@@ -332,6 +414,129 @@ class FacilityBot {
     this._dbgGfx.lineBetween(s.px, s.py, this._goal.x, this._goal.y);
     this._dbgGfx.fillStyle(0x00ffaa, 0.45);
     this._dbgGfx.fillCircle(this._goal.x, this._goal.y, 5);
+  }
+
+  // ── Cycle-end automation ───────────────────────────────────
+
+  // Called by CycleEndScene.create() when the scene is ready.
+  _onCycleSceneReady(cs) {
+    if (this._handledCycleScene === cs) return; // guard against double-fire
+    this._handledCycleScene = cs;
+
+    // Use window.setTimeout (not cs.time.delayedCall) so that the callback
+    // survives the scene shutdown triggered by botContinue() without racing
+    // against Phaser's internal teardown and causing a null-property crash.
+    window.setTimeout(() => {
+      if (!this.enabled) return;
+      this._doCycleUpgrades(cs);
+      this._doCycleAction(cs);
+      window.setTimeout(() => { if (this.enabled) cs.botContinue(); }, 1000);
+    }, 400);
+  }
+
+  // Between-cycle action: prefer training postdocs (compounds across cycles via
+  // level bonuses) and fall back to writing a paper if no one can be trained.
+  _doCycleAction(cs) {
+    if (cs.botChooseAction('train')) {
+      console.log('[Bot] CycleEnd: trained postdoc');
+      return;
+    }
+    cs.botChooseAction('paper');
+    console.log('[Bot] CycleEnd: wrote paper');
+  }
+
+  // Upgrade shop: spend greedily in priority order until the budget runs out.
+  // Priority reflects long-term throughput impact for automated play:
+  //   postdoc > prep room cap > user coordination > beamline speed > prep speed > ring
+  _doCycleUpgrades(cs) {
+    const PRIORITY = [
+      'extraJob',                                              // +1 postdoc worker
+      'prepCap',                                              // 2× prep throughput
+      'npcPositioning',                                       // shorter travel
+      'measSpeed_bl0', 'measSpeed_bl1', 'measSpeed_bl2', 'measSpeed_bl3',
+      'prepSpeed_prep', 'prepSpeed_prep2',                    // cheap stacking bonuses
+      'ringMaint',                                            // long-term stability
+    ];
+    let bought = true;
+    while (bought) {
+      bought = false;
+      for (const key of PRIORITY) {
+        if (cs.botBuyUpgrade(key)) {
+          console.log(`[Bot] CycleEnd: bought ${key}`);
+          bought = true;
+          break; // restart priority scan after each purchase
+        }
+      }
+    }
+  }
+
+  // Called by ProposalReviewScene.create() when the scene is ready.
+  _onProposalReviewReady(cs) {
+    window.setTimeout(() => {
+      if (!this.enabled) return;
+      this._doSelectProposals(cs);
+      // Listen for ProposalReview shutdown so we can re-hook GameScene when it starts
+      cs.events.once('shutdown', () => this._waitAndRehookGame());
+      window.setTimeout(() => { if (this.enabled) cs.botStartCycle(); }, 800);
+    }, 400);
+  }
+
+  // Select the highest-value committed proposals, biased toward beamline diversity.
+  _doSelectProposals(cs) {
+    const usedBl = new Set();
+    const scored = cs.proposals.map((p, i) => {
+      const blIdx = cs.beamlineTechs?.indexOf(p.tech) ?? -1;
+      let score = p.rep;
+      score -= p.samples * 1.5;          // fewer samples = lower completion risk
+      if (!usedBl.has(blIdx)) score += 6; // first proposal for this beamline gets a bonus
+      return { i, score, blIdx };
+    }).sort((a, b) => b.score - a.score);
+
+    const slots = 5 + (cs.upgrades?.postdocs || 0);
+    const target = Math.min(slots, cs.proposals.length);
+
+    // Greedy pick with soft diversity: after adding a proposal, reduce future
+    // same-beamline scores so we don't overfill one beamline.
+    const blCount = {};
+    const selected = [];
+    for (const { i, blIdx } of scored) {
+      if (selected.length >= target) break;
+      blCount[blIdx] = (blCount[blIdx] || 0) + 1;
+      if (blCount[blIdx] > 2) continue; // at most 2 per beamline
+      selected.push(i);
+      usedBl.add(blIdx);
+    }
+
+    cs.botSelectProposals(selected);
+  }
+
+  // Poll with rAF until GameScene is active again, then re-attach the bot.
+  _waitAndRehookGame() {
+    const poll = () => {
+      const s = this._findScene();
+      if (s && window.game?.scene?.isActive('Game')) {
+        this._onGameSceneReady(s);
+      } else {
+        requestAnimationFrame(poll);
+      }
+    };
+    requestAnimationFrame(poll);
+  }
+
+  // Re-attach the bot to a freshly started GameScene (cycles 2+).
+  _onGameSceneReady(s) {
+    if (this._listener) {
+      s.events.off('postupdate', this._listener);
+      s.events.on('postupdate', this._listener);
+    }
+    // Re-create overlay (old one was destroyed with the previous scene)
+    if (this._dbgGfx)  { this._dbgGfx.destroy();            this._dbgGfx = null; }
+    if (this._overlay) { this._overlay.forEach(o => o.destroy()); this._overlay = null; }
+    this._overlayGoal = null; this._overlayStat = null;
+    this._dbgGfx = s.add.graphics().setDepth(50);
+    this._buildOverlay(s);
+    this._setKeyboard(s, false);
+    console.log('[Bot] Re-hooked into GameScene for new cycle');
   }
 
   // ── Scene lookup ───────────────────────────────────────────
