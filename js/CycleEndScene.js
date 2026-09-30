@@ -48,27 +48,34 @@ class CycleEndScene extends Phaser.Scene {
   create(){
     const d = this.d;
     const g = this.add.graphics();
-    g.fillStyle(0xeef4fc); g.fillRect(0,0,GW,GH);
-    g.fillStyle(0xdce8f4); g.fillRect(0,0,GW,64);
-    g.fillStyle(0x00aacc,0.3); g.fillRect(0,62,GW,2);
+    g.fillStyle(0xf4f7f7); g.fillRect(0,0,GW,GH);
+    g.fillStyle(0x14283b); g.fillRect(0,0,GW,64);
+    g.fillStyle(0x34b9ad); g.fillRect(0,62,GW,3);
+    // Separate the required decision from the optional shop.
+    g.fillStyle(0xffffff); g.fillRoundedRect(42,76,308,GH-142,10);
+    g.lineStyle(1,0xd5e2e5); g.strokeRoundedRect(42,76,308,GH-142,10);
+    g.fillStyle(0xffffff); g.fillRoundedRect(358,76,GW-378,GH-142,10);
+    g.lineStyle(1,0xd5e2e5); g.strokeRoundedRect(358,76,GW-378,GH-142,10);
 
     this.add.text(GW/2,20,`CYCLE ${d.cycleInYear} / YEAR ${d.year} — COMPLETE`,
-      {font:'bold 20px Courier New',color:'#0d3a8a'}).setOrigin(0.5);
+      {font:'bold 20px Arial',color:'#f5fbfa',letterSpacing:2}).setOrigin(0.5);
+    this.add.text(GW/2,45,'CHOOSE ACTION  →  OPTIONAL UPGRADES  →  CONTINUE',
+      {font:'bold 11px Arial',color:'#8edbd2',letterSpacing:2}).setOrigin(0.5);
     if (d.cycleInYear===3)
-      this.add.text(GW/2,44,'✦  YEAR END  ✦',
-        {font:'bold 13px Courier New',color:'#aa7700',letterSpacing:3}).setOrigin(0.5);
+      this.add.text(GW-24,44,'✦ YEAR END ✦',
+        {font:'bold 11px Arial',color:'#f2ca83',letterSpacing:2}).setOrigin(1,0.5);
 
     // Quick stats (left column)
     const LX = 60, SY = 80;
-    this.add.text(LX,SY,'CYCLE RESULTS',{font:'bold 13px Courier New',color:'#2a5a8a',letterSpacing:2});
+    this.add.text(LX,SY,'CYCLE RESULTS',{font:'bold 12px Arial',color:'#718792',letterSpacing:2});
     const stats=[
       [`Samples done:`,  String(d.yearSamples)],
       [`Reputation:`,    `⭐ ${d.reputation}`],
       [`Ring stability:`,`${Math.round(d.ringBase)}%`],
     ];
     stats.forEach(([k,v],i)=>{
-      this.add.text(LX,    SY+22+i*20, k, {font:'13px Courier New',color:'#3a5a7a'});
-      const valTxt = this.add.text(LX+160,SY+22+i*20, v, {font:'bold 13px Courier New',color:'#0d2a4a'});
+      this.add.text(LX,    SY+22+i*20, k, {font:'13px Arial',color:'#3a5a7a'});
+      const valTxt = this.add.text(LX+160,SY+22+i*20, v, {font:'bold 13px Arial',color:'#0d2a4a'});
       if (i === 1) this.repValTxt = valTxt; // reputation row — keep ref for live update
     });
 
@@ -76,17 +83,17 @@ class CycleEndScene extends Phaser.Scene {
 
     // Penalties
     if(d.penalties&&d.penalties.length>0){
-      this.add.text(LX,nextY,'Unfulfilled:',{font:'12px Courier New',color:'#cc2200'});
+      this.add.text(LX,nextY,'Unfulfilled:',{font:'12px Arial',color:'#cc2200'});
       d.penalties.forEach((p,i)=>
         this.add.text(LX+110,nextY+i*14,`${p.name} ${p.penalty} rep`,
-          {font:'12px Courier New',color:'#cc4422'}));
+          {font:'12px Arial',color:'#cc4422'}));
       nextY += 20 + d.penalties.length * 14;
     }
 
     // Cycle analytics (auto-instrumentation)
     if (d.proposalsDone !== undefined) {
       this.add.text(LX, nextY, '── CYCLE ANALYTICS ──',
-        {font:'10px Courier New', color:'#6a9abb', letterSpacing:1});
+        {font:'10px Arial', color:'#6a9abb', letterSpacing:1});
       const effTime   = d.yearSamples > 0 ? (CYCLE_SEC / d.yearSamples).toFixed(1) : '—';
       const repPerSmp = d.yearSamples > 0 ? ((d.repEarned||0) / d.yearSamples).toFixed(1) : '—';
       const aRows = [
@@ -94,7 +101,7 @@ class CycleEndScene extends Phaser.Scene {
         `${effTime}s/samp  ·  ${repPerSmp} rep/samp`,
       ];
       aRows.forEach((v, i) => {
-        this.add.text(LX, nextY+14+i*16, v, {font:'bold 11px Courier New', color:'#0d2a4a'});
+        this.add.text(LX, nextY+14+i*16, v, {font:'bold 11px Arial', color:'#0d2a4a'});
       });
       nextY += 14 + aRows.length * 16 + 18;
     }
@@ -108,14 +115,16 @@ class CycleEndScene extends Phaser.Scene {
       {min:0,txt:'❌ No publication'},
     ];
     const out=outcomes.find(o=>d.yearSamples>=o.min);
-    this.add.text(LX,nextY,out.txt,{font:'13px Courier New',color:'#6a4400'});
+    this.add.text(LX,nextY,out.txt,{font:'13px Arial',color:'#6a4400'});
     nextY += 28;
 
 
     // ── BETWEEN-CYCLE ACTION CHOICE ──────────────────────────
     const AY = nextY;
-    this.add.text(LX, AY, 'BETWEEN-CYCLE ACTION', {font:'bold 13px Courier New',color:'#2a5a8a',letterSpacing:2});
-    this.add.text(LX, AY+16, 'Choose one action before continuing:', {font:'11px Courier New',color:'#5a7a9a'});
+    this.add.circle(LX+12,AY+10,12,0x198f82);
+    this.add.text(LX+12,AY+10,'1',{font:'bold 13px Arial',color:'#ffffff'}).setOrigin(0.5);
+    this.add.text(LX+32, AY+2, 'CHOOSE AN ACTION', {font:'bold 14px Arial',color:'#173f57',letterSpacing:1});
+    this.add.text(LX+32, AY+20, 'Required before continuing', {font:'bold 10px Arial',color:'#b05b35'});
 
     this.actionChosen = false;
     const repGain = Math.min(30, 10 + (d.yearSamples || 0) * 2);
@@ -164,38 +173,47 @@ class CycleEndScene extends Phaser.Scene {
 
     this.actionCards = [];
     this._pdSelectObjs = [];
-    const CW = 138, CH = 90;  // must fit 2 cards + 12px gap left of divider at RX-12=358
+    const CW = 138, CH = 98;  // must fit 2 cards + 12px gap left of divider at RX-12=358
     actions.forEach((act, i) => {
       const cx = LX + i * (CW + 12);
       const cy = AY + 42;
-      const bg = this.add.rectangle(cx, cy, CW, CH, act.available ? 0xfafcff : 0xeeeeee)
-        .setOrigin(0, 0).setStrokeStyle(1, act.available ? 0xaabbcc : 0xcccccc);
-      const icon = this.add.text(cx + CW/2, cy + 16, act.icon, {font:'24px Courier New'}).setOrigin(0.5);
-      const lbl = this.add.text(cx + CW/2, cy + 42, act.label, {font:'bold 12px Courier New', color: act.available ? '#1a5a8a' : '#999999'}).setOrigin(0.5);
-      const dsc = this.add.text(cx + CW/2, cy + 58, act.desc, {font:'10px Courier New', color: act.available ? '#2a7a3a' : '#999999', wordWrap:{width:CW-10}, align:'center'}).setOrigin(0.5, 0);
-      const result = this.add.text(cx + CW/2, cy + CH + 6, '', {font:'bold 10px Courier New', color:'#0a8a5a'}).setOrigin(0.5);
+      const bg = this.add.rectangle(cx, cy, CW, CH, act.available ? 0xeaf7f3 : 0xeeeeee)
+        .setOrigin(0, 0).setStrokeStyle(act.available ? 3 : 1, act.available ? 0x219b89 : 0xcccccc);
+      const icon = this.add.text(cx + CW/2, cy + 16, act.icon, {font:'24px Arial'}).setOrigin(0.5);
+      const lbl = this.add.text(cx + CW/2, cy + 42, act.label, {font:'bold 12px Arial', color: act.available ? '#1a5a8a' : '#999999'}).setOrigin(0.5);
+      const dsc = this.add.text(cx + CW/2, cy + 58, act.desc, {font:'10px Arial', color: act.available ? '#2a7a3a' : '#999999', wordWrap:{width:CW-10}, align:'center'}).setOrigin(0.5, 0);
+      const selectHint = this.add.text(cx + CW/2, cy + CH - 10, act.available ? 'CLICK TO SELECT' : 'UNAVAILABLE',
+        {font:'bold 9px Arial', color: act.available ? '#167b6e' : '#aaaaaa', letterSpacing:1}).setOrigin(0.5);
+      const result = this.add.text(cx + CW/2, cy + CH + 6, '', {font:'bold 10px Arial', color:'#0a8a5a'}).setOrigin(0.5);
 
       const completeChoice = (msg) => {
         this.actionChosen = true;
         result.setText(msg);
         bg.setFillStyle(0xd0f0d0).setStrokeStyle(2, 0x2a9a2a);
+        selectHint.setText('✓ SELECTED').setStyle({color:'#167b42'});
         this.actionCards.forEach((c, j) => {
           if (j === i) return;
           c.bg.setFillStyle(0xeeeeee).setStrokeStyle(1, 0xcccccc);
           c.lbl.setStyle({color:'#999999'});
           c.icon.setAlpha(0.4);
+          c.selectHint.setText('NOT SELECTED').setStyle({color:'#aaaaaa'});
         });
-        this.contBtn.setText('[ CONTINUE TO PROPOSAL REVIEW ]').setStyle({color:'#0a7a44'});
+        this.contBtnBg.setFillStyle(0x198f82).setStrokeStyle(2, 0x32b9a7);
+        const nextCycleNo = (this.d.cycleInYear % 3) + 1;
+        const nextYearNo = nextCycleNo === 1 ? this.d.year + 1 : this.d.year;
+        this.contBtn.setText(`3   CONTINUE TO CYCLE ${nextCycleNo} / YEAR ${nextYearNo}  ▶`).setStyle({color:'#ffffff'});
         this.contBtn.setInteractive({useHandCursor:true});
-        this.contBtn.on('pointerover',()=>this.contBtn.setStyle({color:'#0a9a55'}));
-        this.contBtn.on('pointerout', ()=>this.contBtn.setStyle({color:'#0a7a44'}));
+        this.contBtnBg.setInteractive({useHandCursor:true});
+        this.contBtn.on('pointerover',()=>this.contBtnBg.setFillStyle(0x22aa9a));
+        this.contBtn.on('pointerout', ()=>this.contBtnBg.setFillStyle(0x198f82));
         this.contBtn.on('pointerdown',()=>this.nextScene());
+        this.contBtnBg.on('pointerdown',()=>this.nextScene());
       };
 
       if (act.available) {
         bg.setInteractive({useHandCursor:true});
-        bg.on('pointerover', () => { if (!this.actionChosen) bg.setFillStyle(0xd0e4f8); });
-        bg.on('pointerout', () => { if (!this.actionChosen) bg.setFillStyle(0xfafcff); });
+        bg.on('pointerover', () => { if (!this.actionChosen) bg.setFillStyle(0xd6f1eb); });
+        bg.on('pointerout', () => { if (!this.actionChosen) bg.setFillStyle(0xeaf7f3); });
         bg.on('pointerdown', () => {
           if (this.actionChosen) return;
 
@@ -208,7 +226,7 @@ class CycleEndScene extends Phaser.Scene {
 
             const selY = cy + CH + 26;
             const prompt = this.add.text(cx, selY, 'Train which postdoc?',
-              {font:'10px Courier New', color:'#335577'}).setOrigin(0, 0);
+              {font:'10px Arial', color:'#335577'}).setOrigin(0, 0);
             this._pdSelectObjs.push(prompt);
 
             act.selectOptions.forEach((opt, si) => {
@@ -217,7 +235,7 @@ class CycleEndScene extends Phaser.Scene {
               const sbg = this.add.rectangle(bx, by, 66, 26, 0xfafcff)
                 .setOrigin(0, 0).setStrokeStyle(1, 0x2266cc);
               const stxt = this.add.text(bx + 33, by + 13, opt.name,
-                {font:'bold 10px Courier New', color:'#1a5a8a'}).setOrigin(0.5);
+                {font:'bold 10px Arial', color:'#1a5a8a'}).setOrigin(0.5);
               sbg.setInteractive({useHandCursor:true});
               sbg.on('pointerover', () => sbg.setFillStyle(0xd0e4f8));
               sbg.on('pointerout',  () => sbg.setFillStyle(0xfafcff));
@@ -233,14 +251,18 @@ class CycleEndScene extends Phaser.Scene {
           }
         });
       }
-      this.actionCards.push({bg, icon, lbl, dsc, result, act, completeChoice});
+      this.actionCards.push({bg, icon, lbl, dsc, selectHint, result, act, completeChoice});
     });
 
     // ── UPGRADE SHOP (right side) ────────────────────────────
     const RX = 370;
-    this.add.text(RX,SY,'UPGRADES',{font:'bold 13px Courier New',color:'#2a5a8a',letterSpacing:2});
-    this.fundingTxt = this.add.text(RX+220,SY,`💰 ${fmtK(this.funding)} available`,
-      {font:'bold 13px Courier New',color:'#7a5000'});
+    this.add.circle(RX+12,SY+10,12,0x5278bb);
+    this.add.text(RX+12,SY+10,'2',{font:'bold 13px Arial',color:'#ffffff'}).setOrigin(0.5);
+    this.add.text(RX+32,SY+2,'OPTIONAL UPGRADES',{font:'bold 14px Arial',color:'#173f57',letterSpacing:1});
+    this.add.text(RX+32,SY+21,'Buy what you can afford, or save your funding for later.',
+      {font:'11px Arial',color:'#607985'});
+    this.fundingTxt = this.add.text(GW-30,SY+8,`💰 ${fmtK(this.funding)} AVAILABLE`,
+      {font:'bold 13px Arial',color:'#7a5000',backgroundColor:'#fff4d6',padding:{x:9,y:5}}).setOrigin(1,0.5);
 
     // Divider
     g.lineStyle(1,0xccddee);
@@ -322,14 +344,14 @@ class CycleEndScene extends Phaser.Scene {
     const ROW_H   = CARD_H + 12;
 
     // New year grant banner (year-end only)
-    let cardOffsetY = 26;
+    let cardOffsetY = 48;
     if (this.newFundingMsg) {
       const [grantLine, breakdownLine] = this.newFundingMsg.split('\n');
       const BW = GW - RX - 8;
-      this.add.rectangle(RX-8, SY+18, BW, 36, 0xfef8e0).setOrigin(0,0).setStrokeStyle(1,0xccaa44);
-      this.add.text(RX+6, SY+24, grantLine,    {font:'bold 12px Courier New', color:'#7a5500'}).setOrigin(0,0);
-      this.add.text(RX+6, SY+39, breakdownLine,{font:'11px Courier New',      color:'#9a7520'}).setOrigin(0,0);
-      cardOffsetY = 64;
+      this.add.rectangle(RX-8, SY+36, BW, 32, 0xfef8e0).setOrigin(0,0).setStrokeStyle(1,0xccaa44);
+      this.add.text(RX+6, SY+40, grantLine,    {font:'bold 11px Arial', color:'#7a5500'}).setOrigin(0,0);
+      this.add.text(RX+6, SY+54, breakdownLine,{font:'10px Arial',      color:'#9a7520'}).setOrigin(0,0);
+      cardOffsetY = 74;
     }
 
     visibleUpgrades.forEach((u, i) => {
@@ -341,38 +363,40 @@ class CycleEndScene extends Phaser.Scene {
       const bg    = this.add.rectangle(ux, uy, CARD_W, CARD_H, 0xfafcff)
                              .setOrigin(0, 0).setStrokeStyle(1, 0xaabbcc);
       const lbl   = this.add.text(ux + 12, uy + 11, u.label,
-                      {font:'bold 14px Courier New', color:'#1a5a8a'});
+                      {font:'bold 14px Arial', color:'#1a5a8a'});
       const getDesc = () => typeof u.desc === 'function' ? u.desc() : u.desc;
       const dsc   = this.add.text(ux + 12, uy + 31, getDesc(),
-                      {font:'11px Courier New', color:'#3a6a8a',
+                      {font:'11px Arial', color:'#3a6a8a',
                        wordWrap:{width: CARD_W - 80}});
       const cst   = this.add.text(ux + 12, uy + CARD_H - 19, `💰 ${fmtK(u.cost)}`,
-                      {font:'bold 12px Courier New', color:'#9a6600'});
+                      {font:'bold 12px Arial', color:'#9a6600'});
       const btn   = this.add.text(ux + CARD_W - 10, uy + CARD_H / 2 + 6, '[ BUY ]',
-                      {font:'bold 13px Courier New', color:'#0a8a5a'}).setOrigin(1, 0.5);
+                      {font:'bold 13px Arial', color:'#0a8a5a'}).setOrigin(1, 0.5);
       const ownedLabel = u.ownedLabel ?? (typeof u.desc === 'function' ? '✗ MAX' : '✓ OWNED');
       const owned = this.add.text(ux + CARD_W - 10, uy + CARD_H / 2 + 6, ownedLabel,
-                      {font:'bold 12px Courier New', color:'#4a9a6a'}).setOrigin(1, 0.5).setAlpha(0);
+                      {font:'bold 12px Arial', color:'#4a9a6a'}).setOrigin(1, 0.5).setAlpha(0);
 
       bg.setInteractive({useHandCursor:true});
       btn.setInteractive({useHandCursor:true});
       const doClick = () => {
         if (!u.canBuy()) { return; }
         if (this.funding - this.spent < u.cost) {
-          this.fundingTxt.setText(`💰 ${fmtK(this.funding-this.spent)} — not enough!`).setStyle({color:'#cc3300'});
-          this.time.delayedCall(1200, () => this.fundingTxt.setText(`💰 ${fmtK(this.funding-this.spent)} available`).setStyle({color:'#7a5000'}));
+          this.fundingTxt.setText(`💰 ${fmtK(this.funding-this.spent)} — NOT ENOUGH`).setStyle({color:'#cc3300'});
+          this.time.delayedCall(1200, () => this.fundingTxt.setText(`💰 ${fmtK(this.funding-this.spent)} AVAILABLE`).setStyle({color:'#7a5000'}));
           return;
         }
         this.spent += u.cost;
         u.apply();
         if (u.oncePerCycle) this.boughtThisCycle.add(u.key);
-        this.fundingTxt.setText(`💰 ${fmtK(this.funding-this.spent)} available`);
+        this.fundingTxt.setText(`💰 ${fmtK(this.funding-this.spent)} AVAILABLE`);
         dsc.setText(getDesc());
         this.refreshUpgButtons();
       };
       bg.on('pointerdown', doClick); btn.on('pointerdown', doClick);
-      bg.on('pointerover', () => { if (u.canBuy()) bg.setFillStyle(0xd0e4f8); });
-      bg.on('pointerout',  () => bg.setFillStyle(u.canBuy() ? 0xfafcff : 0xeeeeee));
+      bg.on('pointerover', () => {
+        if (u.canBuy() && this.funding - this.spent >= u.cost) bg.setFillStyle(0xe8f4ff);
+      });
+      bg.on('pointerout',  () => this.refreshUpgButtons());
       this.upgButtons.push({u, bg, lbl, dsc, cst, btn, owned});
     });
     this.refreshUpgButtons();
@@ -402,26 +426,28 @@ class CycleEndScene extends Phaser.Scene {
 
     // Export / Clear stats buttons (dev tools)
     const expBtn = this.add.text(LX, GH-44, '[ Export Stats JSON ]',
-      {font:'10px Courier New', color:'#4a8aba'})
+      {font:'10px Arial', color:'#4a8aba'})
       .setInteractive({useHandCursor:true});
     expBtn.on('pointerover',  () => expBtn.setStyle({color:'#0060cc'}));
     expBtn.on('pointerout',   () => expBtn.setStyle({color:'#4a8aba'}));
     expBtn.on('pointerdown',  () => exportStats());
 
     const clrBtn = this.add.text(LX, GH-30, '[ Clear Stats ]',
-      {font:'10px Courier New', color:'#aa6644'})
+      {font:'10px Arial', color:'#aa6644'})
       .setInteractive({useHandCursor:true});
     clrBtn.on('pointerover',  () => clrBtn.setStyle({color:'#cc2200'}));
     clrBtn.on('pointerout',   () => clrBtn.setStyle({color:'#aa6644'}));
     clrBtn.on('pointerdown',  () => { clearStats(); clrBtn.setText('[ Cleared ]'); });
 
-    // Continue button — starts DISABLED until an action is chosen
-    this.contBtn = this.add.text(GW/2, GH-28, '[ CHOOSE AN ACTION ABOVE TO CONTINUE ]',
-      {font:'bold 14px Courier New',color:'#888888'})
+    // Continue button — starts disabled until an action is chosen.
+    this.contBtnBg = this.add.rectangle(GW/2, GH-36, 510, 44, 0xd4dcde)
+      .setStrokeStyle(1, 0xb9c5c8);
+    this.contBtn = this.add.text(GW/2, GH-36, '3   CHOOSE AN ACTION TO UNLOCK CONTINUE',
+      {font:'bold 14px Arial',color:'#718186',letterSpacing:1})
       .setOrigin(0.5);
 
-    this.add.text(GW/2,GH-12,'THE BRILLIANT FACILITY  —  M1 Prototype',
-      {font:'12px Courier New',color:'#aabbcc'}).setOrigin(0.5);
+    this.add.text(GW/2,GH-10,'THE BRILLIANT FACILITY  —  M1 Prototype',
+      {font:'12px Arial',color:'#aabbcc'}).setOrigin(0.5);
 
     if (window._bot?.enabled) window._bot._onCycleSceneReady(this);
   }
@@ -456,7 +482,7 @@ class CycleEndScene extends Phaser.Scene {
     this.spent += entry.u.cost;
     entry.u.apply();
     if (entry.u.oncePerCycle) this.boughtThisCycle.add(entry.u.key);
-    this.fundingTxt.setText(`💰 ${fmtK(this.funding - this.spent)} available`);
+    this.fundingTxt.setText(`💰 ${fmtK(this.funding - this.spent)} AVAILABLE`);
     entry.dsc.setText(typeof entry.u.desc === 'function' ? entry.u.desc() : entry.u.desc);
     this.refreshUpgButtons();
     return true;
@@ -470,12 +496,23 @@ class CycleEndScene extends Phaser.Scene {
   }
 
   refreshUpgButtons(){
+    const remaining = this.funding - this.spent;
     this.upgButtons.forEach(({u,bg,btn,owned})=>{
-      const canBuy = u.canBuy();
-      bg.setFillStyle(canBuy ? 0xfafcff : 0xeeeeee);
-      bg.setStrokeStyle(1, canBuy ? 0xaabbcc : 0xcccccc);
-      btn.setAlpha(canBuy ? 1 : 0);
-      owned.setAlpha(canBuy ? 0 : 1);
+      const available = u.canBuy();
+      const affordable = available && remaining >= u.cost;
+      bg.setFillStyle(!available ? 0xeeeeee : affordable ? 0xffffff : 0xf6f7f7);
+      bg.setStrokeStyle(affordable ? 2 : 1, affordable ? 0x6ba5c4 : 0xcbd5d8);
+      if (!available) {
+        btn.setAlpha(0);
+        const boughtNow = u.oncePerCycle && this.boughtThisCycle.has(u.key);
+        owned.setText(boughtNow ? '✓ BOUGHT' : (u.ownedLabel ?? (typeof u.desc === 'function' ? '✗ MAX' : '✓ OWNED')))
+          .setAlpha(1);
+      } else {
+        owned.setAlpha(0);
+        btn.setAlpha(1)
+          .setText(affordable ? 'BUY  ▶' : `NEED ${fmtK(u.cost)}`)
+          .setStyle({color:affordable ? '#0a8a5a' : '#9aa6aa'});
+      }
     });
   }
 

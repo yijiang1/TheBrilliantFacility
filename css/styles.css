@@ -1,7 +1,7 @@
   * { margin:0; padding:0; box-sizing:border-box; }
   body {
-    background:#ffffff;
-    font-family:'Courier New',monospace;
+    background:#101e32;
+    font-family:Arial, sans-serif;
     overflow:hidden;
   }
   #game-container {

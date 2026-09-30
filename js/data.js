@@ -40,13 +40,13 @@ const TELEMETRY_WEBHOOK = 'https://discord.com/api/webhooks/1493440793720127520/
 
 // Palette
 const C = {
-  hudBg:   0xdce8f4,  // light blue-grey HUD
-  prepRoom:0xeef4fc,  // very light blue prep room (matches background)
-  hutch:   0xe8efe5,  // light greenish grey hutch
-  wall:    0xaabbcc,  // wall line
+  hudBg:   0x173247,  // deep blue control bar
+  prepRoom:0xf7fbfa,  // clean central lab floor
+  hutch:   0xe6f1ef,  // cool beamline rooms
+  wall:    0x97aeb5,  // architectural outlines
   door:    0x7a8a9a,  // door gap
-  boardBg: 0xf4f8ff,  // proposal board
-  jobsBg:  0xf8fcff,  // jobs panel
+  boardBg: 0xffffff,  // proposal board
+  jobsBg:  0xf1f7f6,  // jobs panel
   prepSt:  0x8abadd,  // prep station — light blue
   lockSt:  0xdd8a8a,  // experiment setup — light red
   measSt:  0x8addaa,  // measurement — light teal

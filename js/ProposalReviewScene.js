@@ -27,25 +27,28 @@ class ProposalReviewScene extends Phaser.Scene {
 
     // Background
     const g = this.add.graphics();
-    g.fillStyle(0xeef4fc); g.fillRect(0,0,GW,GH);
-    g.fillStyle(0xdce8f4); g.fillRect(0,0,GW,64);
-    g.fillStyle(0x00aacc,0.3); g.fillRect(0,62,GW,2);
+    g.fillStyle(0xf4f7f7); g.fillRect(0,0,GW,GH);
+    g.lineStyle(1, 0xdce7e7, 0.45);
+    for (let x = 0; x < GW; x += 40) g.lineBetween(x, 64, x, GH);
+    for (let y = 64; y < GH; y += 40) g.lineBetween(0, y, GW, y);
+    g.fillStyle(0x14283b); g.fillRect(0,0,GW,68);
+    g.fillStyle(0x34b9ad); g.fillRect(0,66,GW,3);
 
     // Header
     this.add.text(GW/2, 24, 'THE BRILLIANT FACILITY',
-      {font:'bold 26px Courier New', color:'#0d3a8a'}).setOrigin(0.5);
+      {font:'bold 25px Arial', color:'#f5fbfa', letterSpacing:3}).setOrigin(0.5);
     this.add.text(GW/2, 48, `CYCLE ${this.cycleInYear} / YEAR ${this.year}  —  PROPOSAL REVIEW`,
-      {font:'bold 14px Courier New', color:'#2a5a8a', letterSpacing:2}).setOrigin(0.5);
+      {font:'bold 12px Arial', color:'#8edbd2', letterSpacing:3}).setOrigin(0.5);
 
     // Instruction
     this.add.text(GW/2, 85,
       'Select any proposals to commit this cycle. Only 3 run simultaneously — extras queue up. Unfinished commitments cost reputation.',
-      {font:'14px Courier New', color:'#2a3a4a', align:'center'}).setOrigin(0.5);
+      {font:'14px Arial', color:'#526b78', align:'center'}).setOrigin(0.5);
 
     // Proposal cards — 2 rows × 4 cols
     this.cards = [];
     const cols = 4, rows = 2;
-    const cw = 270, ch = 200, pad = 24;
+    const pad = 18, cw = Math.min(270, (GW - 72 - 3*pad) / 4), ch = 200;
     const startX = (GW - (cols*cw + (cols-1)*pad)) / 2 + cw/2;
     const startY = 220;
 
@@ -57,8 +60,10 @@ class ProposalReviewScene extends Phaser.Scene {
     }
 
     // Start button
-    this.startBtn = this.add.text(GW/2, GH-30, '[ START CYCLE — 0 SELECTED ]',
-      {font:'bold 16px Courier New', color:'#334455'})
+    this.startBtnBg = this.add.rectangle(GW/2, GH-32, 360, 42, 0xa9b8bd)
+      .setStrokeStyle(1, 0x92a7ad);
+    this.startBtn = this.add.text(GW/2, GH-32, 'START CYCLE  ·  SELECT A PROPOSAL',
+      {font:'bold 14px Arial', color:'#ffffff', letterSpacing:1})
       .setOrigin(0.5).setDepth(5);
 
     this.refreshCards();
@@ -89,14 +94,14 @@ class ProposalReviewScene extends Phaser.Scene {
     const blTxt = blIdx >= 0 ? BL_TXT[blIdx] : '#4a5a6a';
     const labIcon = p.labType === 'wet' ? '🧪' : '🔩';
 
-    const bg   = this.add.rectangle(cx, cy, cw, ch, 0xfafcff).setStrokeStyle(1, 0xaabbcc);
-    const sel  = this.add.rectangle(cx, cy, cw, ch, 0x1a6aaa, 0).setStrokeStyle(0);
+    const bg   = this.add.rectangle(cx, cy, cw, ch, 0xffffff).setStrokeStyle(1, 0xd5e2e5);
+    const sel  = this.add.rectangle(cx, cy, cw, ch, 0x2bafa9, 0).setStrokeStyle(0);
     // Left accent stripe matching beamline color
-    const accent = this.add.rectangle(cx - cw/2 + 3, cy, 6, ch - 8, blCol).setOrigin(0.5);
-    const name = this.add.text(cx, cy-60, `${labIcon} ${p.name}`,
-      {font:'bold 18px Courier New', color:'#1a5a8a', wordWrap:{width:cw-30}, align:'center'}).setOrigin(0.5);
-    const tech = this.add.text(cx, cy-34, `${p.tech}${blIdx >= 0 ? ` (BL-${blIdx+1})` : ''}`,
-      {font:'bold 14px Courier New', color:blTxt, wordWrap:{width:cw-20}, align:'center'}).setOrigin(0.5);
+    const accent = this.add.rectangle(cx, cy - ch/2 + 3, cw, 6, blCol).setOrigin(0.5);
+    const name = this.add.text(cx, cy-62, `${labIcon} ${p.name}`,
+      {font:'bold 17px Arial', color:'#173447', wordWrap:{width:cw-26}, align:'center'}).setOrigin(0.5);
+    const tech = this.add.text(cx, cy-35, `${p.tech}${blIdx >= 0 ? ` (BL-${blIdx+1})` : ''}`,
+      {font:'bold 12px Arial', color:blTxt, wordWrap:{width:cw-20}, align:'center'}).setOrigin(0.5);
 
     // Upgrade hint for this beamline / lab
     const prepKey = p.labType === 'wet' ? 'prep' : 'prep2';
@@ -109,25 +114,25 @@ class ProposalReviewScene extends Phaser.Scene {
     if (measPct > 0) upgParts.push(`meas −${measPct}%`);
     const upgHint = upgParts.length > 0 ? `⚡ ${upgParts.join('  ')}` : '';
     this.add.text(cx, cy-18, upgHint,
-      {font:'10px Courier New', color:'#2a7a2a', align:'center'}).setOrigin(0.5);
+      {font:'10px Arial', color:'#2a7a2a', align:'center'}).setOrigin(0.5);
 
-    const repTxt = this.add.text(cx-cw/2+24, cy-8, `⭐ +${p.rep} rep`,
-      {font:'bold 14px Courier New', color:'#b38600'});
+    const repTxt = this.add.text(cx-cw/2+16, cy-8, `⭐ +${p.rep} rep`,
+      {font:'bold 14px Arial', color:'#9a661b'});
     const lineH = 16;
     const sampleLines = p.sampleNames.map((n, i) => (i === 0 ? `📦 ${n}` : `   ${n}`)).join('\n');
-    const batchTxt = this.add.text(cx-cw/2+24, cy+14, sampleLines,
-      {font:'bold 13px Courier New', color:'#0a8a5a', lineSpacing: 2});
+    const batchTxt = this.add.text(cx-cw/2+16, cy+14, sampleLines,
+      {font:'bold 12px Arial', color:'#217a69', lineSpacing: 2, wordWrap:{width:cw-28}});
     const penY = cy + 14 + p.samples * lineH + 4;
-    const penTxt = this.add.text(cx-cw/2+24, penY, `⚠ −${p.penalty} rep if 0 done`,
-      {font:'bold 12px Courier New', color:'#aa3300'});
+    const penTxt = this.add.text(cx-cw/2+16, penY, `⚠ −${p.penalty} rep if 0 done`,
+      {font:'bold 11px Arial', color:'#b25138'});
 
-    const tick = this.add.text(cx+cw/2-24, cy-60, '',
-      {font:'bold 24px Courier New', color:'#1a8a3a'}).setOrigin(0.5);
+    const tick = this.add.text(cx+cw/2-17, cy-72, '',
+      {font:'bold 24px Arial', color:'#219b89'}).setOrigin(0.5);
 
     // Click to select/deselect
     bg.setInteractive({useHandCursor:true});
-    bg.on('pointerover', () => { if(!this.selected.includes(idx)) bg.setFillStyle(0xeef6ff); });
-    bg.on('pointerout',  () => { if(!this.selected.includes(idx)) bg.setFillStyle(0xfafcff); });
+    bg.on('pointerover', () => { if(!this.selected.includes(idx)) bg.setFillStyle(0xf0f9f8); });
+    bg.on('pointerout',  () => { if(!this.selected.includes(idx)) bg.setFillStyle(0xffffff); });
     bg.on('pointerdown', () => this.toggleCard(idx));
     sel.setInteractive({useHandCursor:true});
     sel.on('pointerdown', () => this.toggleCard(idx));
@@ -147,24 +152,30 @@ class ProposalReviewScene extends Phaser.Scene {
   refreshCards() {
     this.cards.forEach((c, i) => {
       const on = this.selected.includes(i);
-      c.bg.setFillStyle(on ? 0xd0e4f8 : 0xfafcff);
-      c.bg.setStrokeStyle(on ? 2 : 1, on ? 0x1a6aaa : 0xaabbcc);
-      c.sel.setFillStyle(on ? 0x1a6aaa : 0xffffff).setAlpha(on ? 0.08 : 0);
+      c.bg.setFillStyle(on ? 0xe9f7f4 : 0xffffff);
+      c.bg.setStrokeStyle(on ? 2 : 1, on ? 0x22a999 : 0xd5e2e5);
+      c.sel.setFillStyle(on ? 0x2bafa9 : 0xffffff).setAlpha(on ? 0.08 : 0);
       c.tick.setText(on ? '✓' : '');
     });
 
     const n = this.selected.length;
     if (n === 0) {
-      this.startBtn.setText('[ START CYCLE — 0 SELECTED ]').setStyle({color:'#888888'});
+      this.startBtnBg.setFillStyle(0xa9b8bd).setStrokeStyle(1, 0x92a7ad);
+      this.startBtn.setText('START CYCLE  ·  SELECT A PROPOSAL').setStyle({color:'#ffffff'});
       this.startBtn.removeInteractive();
+      this.startBtnBg.removeInteractive();
     } else {
-      this.startBtn.setText(`[ START CYCLE WITH ${n} PROPOSAL${n>1?'S':''} ]`)
-        .setStyle({color:'#0a7a44'});
+      this.startBtnBg.setFillStyle(0x198f82).setStrokeStyle(1, 0x127c70);
+      this.startBtn.setText(`START CYCLE  ·  ${n} PROPOSAL${n>1?'S':''}`)
+        .setStyle({color:'#ffffff'});
       this.startBtn.setInteractive({useHandCursor:true});
       this.startBtn.off('pointerdown');
-      this.startBtn.on('pointerover', ()=>this.startBtn.setStyle({color:'#0a9a55'}));
-      this.startBtn.on('pointerout',  ()=>this.startBtn.setStyle({color:'#0a7a44'}));
+      this.startBtn.on('pointerover', ()=>this.startBtnBg.setFillStyle(0x22aa9a));
+      this.startBtn.on('pointerout',  ()=>this.startBtnBg.setFillStyle(0x198f82));
       this.startBtn.on('pointerdown', ()=>this.startCycle());
+      this.startBtnBg.setInteractive({useHandCursor:true});
+      this.startBtnBg.off('pointerdown');
+      this.startBtnBg.on('pointerdown', ()=>this.startCycle());
     }
   }
 

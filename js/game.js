@@ -16,7 +16,7 @@ class ProgressBar {
     this.fill = scene.add.rectangle(x, y, 1, h, fillColor)
                   .setOrigin(0, 0.5).setAlpha(0).setDepth(depth + 1);
     this.lbl  = scene.add.text(x + w / 2, y + labelYOffset, '',
-                  { font: 'bold 11px Courier New', color: '#ffffff' })
+                  { font: 'bold 11px Arial', color: '#ffffff' })
                   .setOrigin(0.5).setAlpha(0).setDepth(depth + 2);
   }
   setPosition(x, y) {
@@ -72,13 +72,20 @@ class TutorialScene extends Phaser.Scene {
     this._nav();
   }
 
-  _bg()           { this._o(this.add.rectangle(GW/2, GH/2, GW, GH, 0xeef4fc)); }
+  _bg() {
+    this._o(this.add.rectangle(GW/2, GH/2, GW, GH, 0xf4f7f7));
+    // A quiet technical grid gives the introductory screens some depth.
+    const grid = this._o(this.add.graphics());
+    grid.lineStyle(1, 0xdce7e7, 0.5);
+    for (let x = 0; x < GW; x += 40) grid.lineBetween(x, 72, x, GH);
+    for (let y = 72; y < GH; y += 40) grid.lineBetween(0, y, GW, y);
+  }
   _header(t, sub) {
-    this._o(this.add.rectangle(GW/2, 36, GW, 72, 0xd0e0f0));
-    this._o(this.add.rectangle(GW/2, 72, GW, 2, 0x0088aa, 0.4));
-    this._o(this.add.text(GW/2, 24, t,   {font:'bold 26px Courier New', color:'#062a6a', letterSpacing:4}).setOrigin(0.5));
-    this._o(this.add.text(GW/2, 54, sub, {font:'bold 13px Courier New', color:'#1a4a8a', letterSpacing:2}).setOrigin(0.5));
-    this._o(this.add.text(GW - 12, 66, VERSION, {font:'11px Courier New', color:'#6a8aaa'}).setOrigin(1, 1));
+    this._o(this.add.rectangle(GW/2, 36, GW, 72, 0x14283b));
+    this._o(this.add.rectangle(GW/2, 71, GW, 3, 0x34b9ad));
+    this._o(this.add.text(GW/2, 24, t,   {font:'bold 26px Arial', color:'#f5fbfa', letterSpacing:4}).setOrigin(0.5));
+    this._o(this.add.text(GW/2, 54, sub, {font:'bold 12px Arial', color:'#8edbd2', letterSpacing:3}).setOrigin(0.5));
+    this._o(this.add.text(GW - 12, 66, VERSION, {font:'11px Arial', color:'#94b1bb'}).setOrigin(1, 1));
   }
 
   // ── Page 0: Overview ─────────────────────────────────────────
@@ -86,39 +93,40 @@ class TutorialScene extends Phaser.Scene {
     this._bg();
     this._header('THE BRILLIANT FACILITY', 'SYNCHROTRON FACILITY MANAGEMENT');
 
-    this._o(this.add.text(GW/2, 120, 'YOU ARE THE BEAMLINE SCIENTIST',
-      {font:'bold 20px Courier New', color:'#0a3a8a', letterSpacing:2}).setOrigin(0.5));
+    this._o(this.add.text(GW/2, 120, 'WELCOME TO THE LIGHT SOURCE',
+      {font:'bold 22px Arial', color:'#153447', letterSpacing:3}).setOrigin(0.5));
     this._o(this.add.text(GW/2, 160,
       'Researchers from around the world submit proposals for beam time at your synchrotron facility.\n' +
       'Your job is to run their samples through the beamlines and deliver results.',
-      {font:'16px Courier New', color:'#1a2a4a', align:'center', lineSpacing:8}).setOrigin(0.5));
+      {font:'16px Arial', color:'#4c6472', align:'center', lineSpacing:8}).setOrigin(0.5));
 
     // Three-box flow diagram
     const FLOW = [
-      {x:GW/2-320, title:'PROPOSALS',   body:'Researchers submit\napplications for beam time', col:0x1a6a9a, tc:'#062a6a', bg:0xe6f0fa},
-      {x:GW/2,     title:'EXPERIMENTS', body:'You run samples through\nthe synchrotron beamlines', col:0x1a8a4a, tc:'#064a1a', bg:0xe6f5ea},
-      {x:GW/2+320, title:'REPUTATION',  body:'Success earns reputation\nand annual funding',        col:0xa37600, tc:'#5a3000', bg:0xfcf6e6},
+      {x:GW/2-320, title:'01  PROPOSALS',   body:'Researchers submit\napplications for beam time', col:0x2bafa9, tc:'#153b4d', bg:0xffffff},
+      {x:GW/2,     title:'02  EXPERIMENTS', body:'Run samples through\nthe synchrotron beamlines', col:0x5278bb, tc:'#153b4d', bg:0xffffff},
+      {x:GW/2+320, title:'03  REPUTATION',  body:'Success earns reputation\nand annual funding',        col:0xe5aa56, tc:'#153b4d', bg:0xffffff},
     ];
     FLOW.forEach(f => {
-      this._o(this.add.rectangle(f.x, 320, 260, 120, f.bg).setStrokeStyle(2, f.col));
-      this._o(this.add.text(f.x, 280, f.title, {font:'bold 16px Courier New', color:f.tc, letterSpacing:2}).setOrigin(0.5));
-      this._o(this.add.text(f.x, 320, f.body,  {font:'15px Courier New', color:f.tc, align:'center', lineSpacing:8}).setOrigin(0.5));
+      this._o(this.add.rectangle(f.x, 322, 260, 126, f.bg).setStrokeStyle(1, 0xd8e4e7));
+      this._o(this.add.rectangle(f.x, 261, 260, 4, f.col));
+      this._o(this.add.text(f.x, 289, f.title, {font:'bold 15px Arial', color:f.tc, letterSpacing:2}).setOrigin(0.5));
+      this._o(this.add.text(f.x, 326, f.body,  {font:'15px Arial', color:'#526b78', align:'center', lineSpacing:8}).setOrigin(0.5));
     });
-    this._o(this.add.text(GW/2-160, 320, '→', {font:'bold 32px Courier New', color:'#3a5a7a'}).setOrigin(0.5));
-    this._o(this.add.text(GW/2+160, 320, '→', {font:'bold 32px Courier New', color:'#3a5a7a'}).setOrigin(0.5));
+    this._o(this.add.text(GW/2-160, 320, '→', {font:'bold 32px Arial', color:'#3a5a7a'}).setOrigin(0.5));
+    this._o(this.add.text(GW/2+160, 320, '→', {font:'bold 32px Arial', color:'#3a5a7a'}).setOrigin(0.5));
 
     // Year structure panel
-    this._o(this.add.rectangle(GW/2, 480, 800, 100, 0xe8f0f8).setStrokeStyle(2, 0xaabbdd));
+    this._o(this.add.rectangle(GW/2, 480, 800, 100, 0x173247).setStrokeStyle(1, 0x376072));
     this._o(this.add.text(GW/2, 455, 'YEAR STRUCTURE',
-      {font:'bold 15px Courier New', color:'#1a4a8a', letterSpacing:2}).setOrigin(0.5));
+      {font:'bold 15px Arial', color:'#7bd7cc', letterSpacing:2}).setOrigin(0.5));
     this._o(this.add.text(GW/2, 485,
       '3 proposal cycles per year  •  Each cycle ≈ 3 minutes of real time\n' +
       'Complete proposals to earn reputation  •  Reputation grows your annual grant',
-      {font:'15px Courier New', color:'#1a2a4a', align:'center', lineSpacing:8}).setOrigin(0.5));
+      {font:'15px Arial', color:'#e9f4f4', align:'center', lineSpacing:8}).setOrigin(0.5));
 
     this._o(this.add.text(GW/2, GH-62,
       'Press [→] or NEXT to continue  •  [SPACE] or [ENTER] to advance',
-      {font:'bold 14px Courier New', color:'#3a5a7a', align:'center'}).setOrigin(0.5));
+      {font:'bold 14px Arial', color:'#3a5a7a', align:'center'}).setOrigin(0.5));
   }
 
   // ── Page 1: Sample Workflow ───────────────────────────────────
@@ -147,14 +155,14 @@ class TutorialScene extends Phaser.Scene {
       this._o(this.add.rectangle(GW/2 - 470, cy, 8, SH - 12, s.col));
       // Step circle + number
       this._o(this.add.circle(GW/2 - 410, cy, 22, s.col));
-      this._o(this.add.text(GW/2 - 410, cy, s.num, {font:'bold 18px Courier New', color:'#ffffff'}).setOrigin(0.5));
+      this._o(this.add.text(GW/2 - 410, cy, s.num, {font:'bold 18px Arial', color:'#ffffff'}).setOrigin(0.5));
       // Station name + description
-      this._o(this.add.text(GW/2 - 360, cy - 14, s.name, {font:'bold 18px Courier New', color:s.tc}));
-      this._o(this.add.text(GW/2 - 360, cy + 10,  s.desc, {font:'15px Courier New',      color:'#2a3a5a', wordWrap:{width:820}}));
+      this._o(this.add.text(GW/2 - 360, cy - 14, s.name, {font:'bold 18px Arial', color:s.tc}));
+      this._o(this.add.text(GW/2 - 360, cy + 10,  s.desc, {font:'15px Arial',      color:'#2a3a5a', wordWrap:{width:820}}));
       // Connector arrow between steps
       if (i < STEPS.length - 1) {
         this._o(this.add.text(GW/2 - 410, y + SH + GAP / 2, '↓',
-          {font:'bold 18px Courier New', color:'#3a6a8a'}).setOrigin(0.5));
+          {font:'bold 18px Arial', color:'#3a6a8a'}).setOrigin(0.5));
       }
     });
 
@@ -162,7 +170,7 @@ class TutorialScene extends Phaser.Scene {
     this._o(this.add.rectangle(GW/2, noteY, 800, 36, 0xd0e0f0).setStrokeStyle(2, 0x8ab4d8));
     this._o(this.add.text(GW/2, noteY,
       'Carry up to 3 samples at once  •  Up to 3 proposals run simultaneously',
-      {font:'bold 15px Courier New', color:'#062a6a', align:'center'}).setOrigin(0.5));
+      {font:'bold 15px Arial', color:'#062a6a', align:'center'}).setOrigin(0.5));
   }
 
   // ── Page 2: Controls + Tips + Start ──────────────────────────
@@ -171,8 +179,8 @@ class TutorialScene extends Phaser.Scene {
     this._header('READY TO BEGIN', 'CONTROLS & TIPS');
 
     // Left column — Controls
-    const leftX = GW/2 - 280;
-    this._o(this.add.text(leftX - 200, 110, 'CONTROLS', {font:'bold 18px Courier New', color:'#062a6a', letterSpacing:2}));
+    const leftX = GW/2 - 240;
+    this._o(this.add.text(leftX - 200, 110, 'CONTROLS', {font:'bold 18px Arial', color:'#062a6a', letterSpacing:2}));
     const CTRL = [
       ['WASD / ↑↓←→', 'Move scientist'],
       ['[SPACE]',     'Pick up / Deposit /\nInteract'],
@@ -180,15 +188,15 @@ class TutorialScene extends Phaser.Scene {
       ['[ESC]',       'Pause game'],
     ];
     CTRL.forEach(([key, desc], i) => {
-      const y = 160 + i * 68;
+      const y = 150 + i * 68;
       this._o(this.add.rectangle(leftX, y + 16, 440, 60, 0xffffff, 0.9).setStrokeStyle(2, 0xddeeff));
-      this._o(this.add.text(leftX - 200, y - 4,  key,  {font:'bold 16px Courier New', color:'#1a5a9a'}));
-      this._o(this.add.text(leftX - 20,  y - 4, desc, {font:'15px Courier New',      color:'#2a3a5a', lineSpacing:6}));
+      this._o(this.add.text(leftX - 200, y - 4,  key,  {font:'bold 16px Arial', color:'#1a5a9a'}));
+      this._o(this.add.text(leftX - 20,  y - 4, desc, {font:'15px Arial',      color:'#2a3a5a', lineSpacing:6}));
     });
 
     // Right column — Tips
-    const rightX = GW/2 + 280;
-    this._o(this.add.text(rightX - 200, 110, 'GOOD TO KNOW', {font:'bold 18px Courier New', color:'#062a6a', letterSpacing:2}));
+    const rightX = GW/2 + 240;
+    this._o(this.add.text(rightX - 200, 110, 'GOOD TO KNOW', {font:'bold 18px Arial', color:'#062a6a', letterSpacing:2}));
     const TIPS = [
       "Don't overcommit! Unfinished proposals\ncause reputation penalties at cycle end.",
       "Prep Table and Scan Console actions\npause if you walk away from the station.",
@@ -196,19 +204,19 @@ class TutorialScene extends Phaser.Scene {
       "The synchrotron ring degrades each cycle.\nKeep health above 60% or get penalties.",
     ];
     TIPS.forEach((tip, i) => {
-      const y = 160 + i * 90;
-      this._o(this.add.rectangle(rightX, y + 16, 480, 80, 0xe6f0fa).setStrokeStyle(2, 0x8ab4d8));
-      this._o(this.add.text(rightX - 220, y - 10, tip, {font:'16px Courier New', color:'#1a2a4a', lineSpacing:6}));
+      const y = 150 + i * 70;
+      this._o(this.add.rectangle(rightX, y + 16, 480, 62, 0xffffff).setStrokeStyle(1, 0xd5e2e5));
+      this._o(this.add.text(rightX - 220, y - 8, tip, {font:'15px Arial', color:'#365469', lineSpacing:5}));
     });
 
     // START GAME / CONTINUE button
-    const bx = GW / 2, by = GH - 140;
+    const bx = GW / 2, by = GH - 110;
     const save = loadGame();
     if (save) {
       // Continue saved game (primary)
       const cbg = this._o(this.add.rectangle(bx, by, 320, 56, 0x0a7a44).setStrokeStyle(3, 0x2aaa66));
       const ctx = this._o(this.add.text(bx, by, 'CONTINUE  ▶',
-        {font:'bold 20px Courier New', color:'#ffffff', letterSpacing:3}).setOrigin(0.5));
+        {font:'bold 20px Arial', color:'#ffffff', letterSpacing:3}).setOrigin(0.5));
       cbg.setInteractive({useHandCursor:true});
       cbg.on('pointerover',  () => cbg.setFillStyle(0x0a9a55));
       cbg.on('pointerout',   () => cbg.setFillStyle(0x0a7a44));
@@ -220,10 +228,10 @@ class TutorialScene extends Phaser.Scene {
       const genName = GENERATION_DATA[genNum - 1].name;
       this._o(this.add.text(bx, by + 40,
         `Year ${save.year}  ·  Cycle ${save.cycleInYear}/3  ·  ${genName}  ·  ⭐ ${save.reputation}`,
-        {font:'bold 13px Courier New', color:'#2a6a46', align:'center'}).setOrigin(0.5));
+        {font:'bold 13px Arial', color:'#2a6a46', align:'center'}).setOrigin(0.5));
       // New game link
       const ng = this._o(this.add.text(bx, by + 65, '[ new game — erase save ]',
-        {font:'bold 13px Courier New', color:'#4a6070'}).setOrigin(0.5));
+        {font:'bold 13px Arial', color:'#4a6070'}).setOrigin(0.5));
       ng.setInteractive({useHandCursor:true});
       ng.on('pointerover', () => ng.setStyle({color:'#cc5544'}));
       ng.on('pointerout',  () => ng.setStyle({color:'#4a6070'}));
@@ -232,7 +240,7 @@ class TutorialScene extends Phaser.Scene {
       // Fresh start
       const bbg = this._o(this.add.rectangle(bx, by, 320, 56, 0x0d3a8a).setStrokeStyle(3, 0x4a8add));
       const btx = this._o(this.add.text(bx, by, 'START GAME  ▶',
-        {font:'bold 20px Courier New', color:'#ffffff', letterSpacing:3}).setOrigin(0.5));
+        {font:'bold 20px Arial', color:'#ffffff', letterSpacing:3}).setOrigin(0.5));
       bbg.setInteractive({useHandCursor:true});
       bbg.on('pointerover',  () => bbg.setFillStyle(0x1a5aaa));
       bbg.on('pointerout',   () => bbg.setFillStyle(0x0d3a8a));
@@ -252,19 +260,19 @@ class TutorialScene extends Phaser.Scene {
     // Prev button
     if (this.page > 0) {
       const p = this._n(this.add.text(80, cy, '◀  PREV',
-        {font:'bold 13px Courier New', color:'#1a5a9a'}).setOrigin(0.5));
+        {font:'bold 13px Arial', color:'#1a5a9a'}).setOrigin(0.5));
       p.setInteractive({useHandCursor:true});
       p.on('pointerdown', () => { this.page--; this._show(); });
     }
     // Next button + skip link
     if (this.page < TOTAL - 1) {
       const nx = this._n(this.add.text(GW - 80, cy, 'NEXT  ▶',
-        {font:'bold 13px Courier New', color:'#1a5a9a'}).setOrigin(0.5));
+        {font:'bold 13px Arial', color:'#1a5a9a'}).setOrigin(0.5));
       nx.setInteractive({useHandCursor:true});
       nx.on('pointerdown', () => { this.page++; this._show(); });
 
       const sk = this._n(this.add.text(GW - 80, cy - 32, '[ SKIP INTRO ]',
-        {font:'bold 12px Courier New', color:'#aa3322'}).setOrigin(0.5));
+        {font:'bold 12px Arial', color:'#aa3322'}).setOrigin(0.5));
       sk.setInteractive({useHandCursor:true});
       sk.on('pointerover', () => sk.setStyle({color:'#ff2200'}));
       sk.on('pointerout', () => sk.setStyle({color:'#aa3322'}));
@@ -461,17 +469,17 @@ class GameScene extends Phaser.Scene {
     this.pauseOverlay = this.add.rectangle(cx, cy, this.PLAY_W, GH - this.HUD_H, 0x000022)
       .setAlpha(0).setDepth(50);
     this.pauseTxt = this.add.text(cx, cy - 40, 'PAUSED',
-      {font:'bold 48px Courier New', color:'#ffffff', letterSpacing:6})
+      {font:'bold 48px Arial', color:'#ffffff', letterSpacing:6})
       .setOrigin(0.5).setAlpha(0).setDepth(51);
     this.pauseHint = this.add.text(cx, cy + 10, 'press ESC to resume',
-      {font:'16px Courier New', color:'#aaccee', letterSpacing:2})
+      {font:'16px Arial', color:'#aaccee', letterSpacing:2})
       .setOrigin(0.5).setAlpha(0).setDepth(51);
 
     // Save & Quit button
     const sqBg = this.add.rectangle(cx, cy + 56, 240, 36, 0x1a3a6a)
       .setStrokeStyle(1, 0x4a7ab0).setAlpha(0).setDepth(51).setInteractive({ useHandCursor: true });
     const sqTxt = this.add.text(cx, cy + 56, '💾  Save & Quit to Menu',
-      {font:'14px Courier New', color:'#aaccff'})
+      {font:'14px Arial', color:'#aaccff'})
       .setOrigin(0.5).setAlpha(0).setDepth(52);
     sqBg.on('pointerover',  () => sqBg.setFillStyle(0x2a5a9a));
     sqBg.on('pointerout',   () => sqBg.setFillStyle(0x1a3a6a));
@@ -515,15 +523,15 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5).setAlpha(0).setDepth(31);
 
     this.dumpTitle = this.add.text(GW/2 - 80, bannerY, '⚡ BEAM DUMP',
-      {font:'bold 13px Courier New', color:'#ff6666', letterSpacing:2})
+      {font:'bold 13px Arial', color:'#ff6666', letterSpacing:2})
       .setOrigin(0.5).setAlpha(0).setDepth(32);
 
     this.dumpCountdown = this.add.text(GW/2 + 60, bannerY, '',
-      {font:'bold 13px Courier New', color:'#ffeeaa'})
+      {font:'bold 13px Arial', color:'#ffeeaa'})
       .setOrigin(0.5).setAlpha(0).setDepth(32);
 
     this.dumpSub = this.add.text(GW/2 - 10, bannerY + 0, '',  // unused but kept for showDumpOverlay compat
-      {font:'12px Courier New', color:'#ffcccc'}).setAlpha(0).setDepth(32);
+      {font:'12px Arial', color:'#ffcccc'}).setAlpha(0).setDepth(32);
 
     // Subtle HUD tint only — no dimmer over the play field
     this.dumpHudStripe = this.add.rectangle(GW/2, this.HUD_H/2, GW, this.HUD_H, 0xff4400, 0.12)
@@ -581,7 +589,7 @@ class GameScene extends Phaser.Scene {
     g.lineStyle(1,C.wall); g.lineBetween(0,this.HUD_H,GW,this.HUD_H);
     g.fillStyle(C.jobsBg);  g.fillRect(GW-this.JOBS_W,this.HUD_H,this.JOBS_W,GH-this.HUD_H);
     g.lineStyle(1,C.wall);  g.lineBetween(GW-this.JOBS_W,this.HUD_H,GW-this.JOBS_W,GH);
-    g.fillStyle(0xcecac4); g.fillRect(0, this.HUD_H, this.PLAY_W, GH - this.HUD_H);
+    g.fillStyle(0xe2eae8); g.fillRect(0, this.HUD_H, this.PLAY_W, GH - this.HUD_H);
   }
 
   // ── Board graphics (rebuilt when sliders change) ──────────
@@ -639,14 +647,14 @@ class GameScene extends Phaser.Scene {
       const lblX1 = baseX + Math.cos(rad) * lbldist1;
       const lblY1 = baseY + Math.sin(rad) * lbldist1;
       bg(this.add.text(lblX1, lblY1, `BL-${idx+1}`,
-        {font:'bold 24px Courier New',color:BL_TXT[idx],stroke:'#ffffff',strokeThickness:2,letterSpacing:1}).setOrigin(0.5).setDepth(6));
+        {font:'bold 24px Arial',color:BL_TXT[idx],stroke:'#ffffff',strokeThickness:2,letterSpacing:1}).setOrigin(0.5).setDepth(6));
       
       // Technique name sits slightly further out
       const lbldist2 = Math.max(ctrlLen, hutchLen) / 2 + 50;
       const lblX2 = baseX + Math.cos(rad) * lbldist2;
       const lblY2 = baseY + Math.sin(rad) * lbldist2;
       bg(this.add.text(lblX2, lblY2, this.beamlineTechs[idx],
-        {font:'bold 14px Courier New',color:BL_TXT[idx],stroke:'#ffffff',strokeThickness:2,align:'center'}).setOrigin(0.5).setDepth(6));
+        {font:'bold 14px Arial',color:BL_TXT[idx],stroke:'#ffffff',strokeThickness:2,align:'center'}).setOrigin(0.5).setDepth(6));
     });
 
     const roomOutlineG = bg(this.add.graphics().setDepth(5));
@@ -664,14 +672,14 @@ class GameScene extends Phaser.Scene {
 
     const g2 = bg(this.add.graphics().setDepth(2));
     g2.lineStyle(4, C.wall);
-    g2.fillStyle(0xd5e2ec);
+    g2.fillStyle(0xd4e7e3);
     g2.fillCircle(this.CX, this.CY, this.RING_RAD);
     g2.strokeCircle(this.CX, this.CY, this.RING_RAD);
     g2.lineStyle(2, C.wall);
     g2.strokeCircle(this.CX, this.CY, this.PREP_RAD);
 
     bg(this.add.text(this.CX, this.CY, 'STORAGE RING',
-      {font:'bold 15px Courier New',color:'#3a5060',letterSpacing:2}).setOrigin(0.5));
+      {font:'bold 15px Arial',color:'#3a5060',letterSpacing:2}).setOrigin(0.5));
 
     this.beamGfx = bg(this.add.graphics());
     this.redrawBeam();
@@ -756,7 +764,7 @@ class GameScene extends Phaser.Scene {
       this.drawSt(k,false,null,false);
       if(st.icon && st.w > 0) bg(this.add.text(st.x,st.y-5,st.icon,{font:'18px Arial'}).setOrigin(0.5));
       if(st.label && st.w > 0) bg(this.add.text(st.x,st.y+10,st.label,
-        {font:'bold 13px Courier New',color:'#ffffff',letterSpacing:1}).setOrigin(0.5));
+        {font:'bold 13px Arial',color:'#ffffff',letterSpacing:1}).setOrigin(0.5));
     }
 
     // Station processing bars (shown while auto-processing)
@@ -779,7 +787,7 @@ class GameScene extends Phaser.Scene {
       const rdyX = st.boxCX !== undefined ? st.boxCX : st.x;
       const rdyY = st.boxCY !== undefined ? st.boxCY : st.y;
       this.stReady[k] = bg(this.add.text(rdyX, rdyY - 20,'✅ READY',
-        {font:'bold 12px Courier New',color:'#1a7a3a'}).setOrigin(0.5).setAlpha(0).setDepth(27));
+        {font:'bold 12px Arial',color:'#1a7a3a'}).setOrigin(0.5).setAlpha(0).setDepth(27));
     }
 
     // Sample-loaded indicators for each hutch
@@ -789,7 +797,7 @@ class GameScene extends Phaser.Scene {
       const ico = bg(this.add.text(st.boxCX, st.boxCY + 6, '🧪',
         {font:'18px Arial'}).setOrigin(0.5).setAlpha(0).setDepth(4));
       const lbl = bg(this.add.text(st.boxCX, st.boxCY + 22, 'LOADED',
-        {font:'bold 10px Courier New',color:'#1a6a3a'}).setOrigin(0.5).setAlpha(0).setDepth(4));
+        {font:'bold 10px Arial',color:'#1a6a3a'}).setOrigin(0.5).setAlpha(0).setDepth(4));
       this.hutchSampleIcons[bl.idx] = { ico, lbl };
     }
   }
@@ -816,7 +824,7 @@ class GameScene extends Phaser.Scene {
     panel.style.cssText = `
       position:absolute; top:${this.HUD_H + 8}px; left:8px;
       background:rgba(15,25,45,0.93); color:#aaddff;
-      font:12px "Courier New"; padding:12px 16px;
+      font:12px "Arial"; padding:12px 16px;
       border-radius:6px; border:1px solid #3a6088;
       display:none; z-index:100; width:230px; user-select:none;
     `;
@@ -856,7 +864,7 @@ class GameScene extends Phaser.Scene {
     logBtn.style.cssText = `
       margin-top:4px; background:#1a4a7a; color:#aaddff;
       border:1px solid #3a6088; padding:5px 0; cursor:pointer;
-      font:12px "Courier New"; width:100%; border-radius:3px;
+      font:12px "Arial"; width:100%; border-radius:3px;
     `;
     logBtn.addEventListener('click', () => {
       console.log('=== Board layout values ===');
@@ -912,10 +920,10 @@ class GameScene extends Phaser.Scene {
         this.add.ellipse(0,12,30,9,JOB_HEX[i],0.20),
         this.add.circle(0,0,12,JOB_HEX[i]),
         this.add.rectangle(0,5,15,9,0xffffff,0.45),
-        this.add.text(0,0,`U${i+1}`,{font:'bold 11px Courier New',color:'#fff'}).setOrigin(0.5),
+        this.add.text(0,0,`U${i+1}`,{font:'bold 11px Arial',color:'#fff'}).setOrigin(0.5),
       ]);
       const nameTag = this.add.text(0,22,'',
-        {font:'11px Courier New',color:JOB_TXT[i],align:'center',wordWrap:{width:80}}).setOrigin(0.5);
+        {font:'11px Arial',color:JOB_TXT[i],align:'center',wordWrap:{width:80}}).setOrigin(0.5);
       const ring = this.add.circle(0,0,18,0xffffff,0);
       ring.setStrokeStyle(1.5,JOB_HEX[i],0.4);
       // Leave timer bar — added to grp so it bobs with the NPC
@@ -966,9 +974,9 @@ class GameScene extends Phaser.Scene {
     const rx=GW-this.JOBS_W, bx=rx+this.JOBS_W/2;
     this.add.text(bx,this.HUD_H+14,'🔬',{font:'16px Arial'}).setOrigin(0.5);
     this.add.text(bx,this.HUD_H+30,'ACTIVE & PENDING JOBS',
-      {font:'bold 11px Courier New',color:'#2a5a7a',letterSpacing:1}).setOrigin(0.5);
+      {font:'bold 11px Arial',color:'#2a5a7a',letterSpacing:1}).setOrigin(0.5);
     this.queueLbl = this.add.text(bx,this.HUD_H+44,'',
-      {font:'11px Courier New',color:'#aa6622'}).setOrigin(0.5);
+      {font:'11px Arial',color:'#aa6622'}).setOrigin(0.5);
     
     // Layout 5 slots vertically
     const slotH=Math.floor((GH-this.HUD_H-52)/MAX_SLOTS);
@@ -983,22 +991,22 @@ class GameScene extends Phaser.Scene {
       
       // -- ACTIVE JOB ELEMENTS --
       const dot   =this.add.circle(rx+16,sy+16,6,JOB_HEX[i]);
-      const name  =this.add.text(rx+28,sy+9,'',{font:'bold 13px Courier New',color:JOB_TXT[i],wordWrap:{width:this.JOBS_W-40}});
-      const tech  =this.add.text(rx+8,sy+30,'',{font:'11px Courier New',color:'#2a7a9a'});
-      const prog  =this.add.text(rx+8,sy+43,'',{font:'bold 12px Courier New',color:'#00cc88'});
-      const state =this.add.text(rx+8,sy+55,'',{font:'12px Courier New',color:'#ccaa44',wordWrap:{width:this.JOBS_W-16}});
+      const name  =this.add.text(rx+28,sy+9,'',{font:'bold 13px Arial',color:JOB_TXT[i],wordWrap:{width:this.JOBS_W-40}});
+      const tech  =this.add.text(rx+8,sy+30,'',{font:'11px Arial',color:'#2a7a9a'});
+      const prog  =this.add.text(rx+8,sy+43,'',{font:'bold 12px Arial',color:'#00cc88'});
+      const state =this.add.text(rx+8,sy+55,'',{font:'12px Arial',color:'#ccaa44',wordWrap:{width:this.JOBS_W-16}});
       const pipBar = new ProgressBar(this, rx+8, sy+78, this.JOBS_W-16, 8,
         { bgColor:0xd8e8f4, bgAlpha:1, fillColor:JOB_HEX[i], depth:0 });
 
       // -- PENDING PROPOSAL ELEMENTS --
-      const pendTit = this.add.text(rx+8,sy+6, '',{font:'bold 11px Courier New',color:'#2a5a8a',wordWrap:{width:this.JOBS_W-16}});
-      const pendSub = this.add.text(rx+8,sy+22,'',{font:'11px Courier New',color:'#4a5a6a',wordWrap:{width:this.JOBS_W-16}});
-      const pendRep = this.add.text(rx+8,sy+36,'',{font:'bold 12px Courier New',color:'#b38600'});
-      const pendTim = this.add.text(rx+8,sy+48,'',{font:'12px Courier New',color:'#aa4422'});
+      const pendTit = this.add.text(rx+8,sy+6, '',{font:'bold 11px Arial',color:'#2a5a8a',wordWrap:{width:this.JOBS_W-16}});
+      const pendSub = this.add.text(rx+8,sy+22,'',{font:'11px Arial',color:'#4a5a6a',wordWrap:{width:this.JOBS_W-16}});
+      const pendRep = this.add.text(rx+8,sy+36,'',{font:'bold 12px Arial',color:'#b38600'});
+      const pendTim = this.add.text(rx+8,sy+48,'',{font:'12px Arial',color:'#aa4422'});
       const pendBar = new ProgressBar(this, rx+8, sy+62, this.JOBS_W-16, 4,
         { bgColor:0xe8e4e0, bgAlpha:1, fillColor:0xff8844, depth:0 });
       const pendBtn = this.add.text(rx+this.JOBS_W/2,sy+78,'[ CLICK TO ACCEPT ]',
-        {font:'bold 13px Courier New',color:'#0a8a5a'}).setOrigin(0.5).setInteractive({useHandCursor:true});
+        {font:'bold 13px Arial',color:'#0a8a5a'}).setOrigin(0.5).setInteractive({useHandCursor:true});
       pendBtn.on('pointerover',()=>pendBtn.setStyle({color:'#0ab877'}));
       pendBtn.on('pointerout', ()=>pendBtn.setStyle({color:'#0a8a5a'}));
 
@@ -1149,7 +1157,7 @@ class GameScene extends Phaser.Scene {
     this.pCon.add([
       this.add.circle(0,0,13,C.player),
       this.add.circle(0,-9,7,C.hat),
-      this.add.text(0,18,'YOU',{font:'bold 12px Courier New',color:'#0a3a8a'}).setOrigin(0.5),
+      this.add.text(0,18,'YOU',{font:'bold 12px Arial',color:'#0a3a8a'}).setOrigin(0.5),
     ]);
 
 
@@ -1157,16 +1165,16 @@ class GameScene extends Phaser.Scene {
     this.invDots=[];
     for(let i=0;i<MAX_HELD;i++){
       const d=this.add.circle(0,0,7,0xaaaaaa).setVisible(false).setDepth(20);
-      const t=this.add.text(0,0,'',{font:'bold 10px Courier New',color:'#fff'}).setOrigin(0.5).setVisible(false).setDepth(21);
+      const t=this.add.text(0,0,'',{font:'bold 10px Arial',color:'#fff'}).setOrigin(0.5).setVisible(false).setDepth(21);
       this.invDots.push({d,t});
     }
 
 
     const cx=this.BOARD_W+this.PLAY_W/2;
     this.promptTxt=this.add.text(cx,GH-22,'',
-      {font:'bold 14px Courier New',color:'#ccaa44',align:'center'}).setOrigin(0.5).setDepth(20);
+      {font:'bold 14px Arial',color:'#ccaa44',align:'center'}).setOrigin(0.5).setDepth(20);
     this.statusTxt=this.add.text(cx,GH-42,'',
-      {font:'14px Courier New',color:'#00cc88',align:'center'}).setOrigin(0.5).setDepth(20);
+      {font:'14px Arial',color:'#00cc88',align:'center'}).setOrigin(0.5).setDepth(20);
   }
 
   // ── Postdoc NPCs ─────────────────────────────────────────────
@@ -1186,9 +1194,9 @@ class GameScene extends Phaser.Scene {
         this.add.ellipse(0, 12, 28, 8, 0x2266aa, 0.25),
         this.add.circle(0, 0, 11, 0x2a66cc),
         this.add.rectangle(0, 5, 13, 8, 0xffffff, 0.4),
-        this.add.text(0, 0, badge, {font:'bold 10px Courier New', color:'#fff'}).setOrigin(0.5),
+        this.add.text(0, 0, badge, {font:'bold 10px Arial', color:'#fff'}).setOrigin(0.5),
       ]);
-      const label = this.add.text(0, -20, 'idle', {font:'10px Courier New', color:'#6699cc'}).setOrigin(0.5);
+      const label = this.add.text(0, -20, 'idle', {font:'10px Arial', color:'#6699cc'}).setOrigin(0.5);
       grp.add(label);
       this.postdocs.push({ x, y, grp, label, targetX: x, targetY: y, targetKey: null, thinkTimer: 0,
                             state: 'idle', assignedAction: null, followAngle: angle, stuckTimer: 0,
@@ -1379,26 +1387,26 @@ class GameScene extends Phaser.Scene {
   // ── HUD ───────────────────────────────────────────────────
   buildHUD() {
     this.timerTxt=this.add.text(GW/2,22,this.daysLeft(this.yearTimer),
-      {font:'bold 20px Courier New',color:'#1a5a8a'}).setOrigin(0.5).setDepth(15);
+      {font:'bold 20px Arial',color:'#f2fbf9'}).setOrigin(0.5).setDepth(15);
     this.cycleLbl=this.add.text(GW/2,44,this.cycleLabel(),
-      {font:'12px Courier New',color:'#2a4a6a',letterSpacing:2}).setOrigin(0.5).setDepth(15);
+      {font:'12px Arial',color:'#83d5c9',letterSpacing:2}).setOrigin(0.5).setDepth(15);
 
     this.repTxt =this.add.text(20, 32,`⭐ ${this.reputation} rep`,
-      {font:'bold 14px Courier New',color:'#6a4d00'}).setOrigin(0, 0.5).setDepth(15);
+      {font:'bold 14px Arial',color:'#f2ca83'}).setOrigin(0, 0.5).setDepth(15);
     this.sampTxt=this.add.text(125, 32,'⬡ 0 samples',
-      {font:'bold 14px Courier New',color:'#0a5a30'}).setOrigin(0, 0.5).setDepth(15);
+      {font:'bold 14px Arial',color:'#a8e6d7'}).setOrigin(0, 0.5).setDepth(15);
     this.invLabel=this.add.text(250, 32,`🧪 0/${MAX_HELD} held`,
-      {font:'bold 14px Courier New',color:'#1a5aaa'}).setOrigin(0, 0.5).setDepth(15);
+      {font:'bold 14px Arial',color:'#c9e9f2'}).setOrigin(0, 0.5).setDepth(15);
     this.destLabel=this.add.text(370, 32,'',
-      {font:'bold 13px Courier New',color:'#0a7a3a'}).setOrigin(0, 0.5).setDepth(15);
+      {font:'bold 13px Arial',color:'#176c58',backgroundColor:'#eaf7f3',padding:{x:5,y:3}}).setOrigin(0, 0.5).setDepth(15);
 
     const ringX = GW - 175;
     this.ringLbl=this.add.text(ringX,15,'RING STABILITY',
-      {font:'12px Courier New',color:'#0a4a20',letterSpacing:1}).setDepth(15);
+      {font:'12px Arial',color:'#a8e6d7',letterSpacing:1}).setDepth(15);
     this.rBg  =this.add.rectangle(ringX,38,158,12,0xc4e0cc).setOrigin(0,0.5).setDepth(15);
     this.rFill=this.add.rectangle(ringX,38,158,12,0x44bb44).setOrigin(0,0.5).setDepth(15);
     this.rPct =this.add.text(ringX+79,38,'100%',
-      {font:'bold 12px Courier New',color:'#1a3a1a'}).setOrigin(0.5).setDepth(15);
+      {font:'bold 12px Arial',color:'#102c25'}).setOrigin(0.5).setDepth(15);
 
     this.setupLayoutMode();
   }
@@ -1421,7 +1429,7 @@ class GameScene extends Phaser.Scene {
 
     this.layoutBanner = this.add.text(GW/2, GH-18,
       '⚙ LAYOUT MODE  •  drag HUD elements  •  press ` to finish & log positions',
-      { font:'12px Courier New', color:'#ffffff',
+      { font:'12px Arial', color:'#ffffff',
         backgroundColor:'#223355', padding:{x:8,y:4} })
       .setOrigin(0.5).setDepth(99).setVisible(false);
 
@@ -2458,7 +2466,7 @@ class GameScene extends Phaser.Scene {
     bg.fillStyle(0x001122, 0.88);
     bg.fillRoundedRect(px, py, panelW, panelH, 5);
     this.add.text(px + 5, py + panelH / 2, 'DEV', {
-      font: 'bold 8px Courier New', color: '#ff7700'
+      font: 'bold 8px Arial', color: '#ff7700'
     }).setOrigin(0, 0.5).setDepth(201);
 
     buttons.forEach((btn, i) => {
@@ -2467,7 +2475,7 @@ class GameScene extends Phaser.Scene {
       const btnBg = this.add.rectangle(bx + btnW / 2, by + btnH / 2, btnW, btnH, 0x1a3d6b)
         .setDepth(201).setInteractive({ useHandCursor: true });
       const txt = this.add.text(bx + btnW / 2, by + btnH / 2, btn.label, {
-        font: '10px Courier New', color: '#aaccff'
+        font: '10px Arial', color: '#aaccff'
       }).setOrigin(0.5).setDepth(202);
       if (i === buttons.length - 1) this._devSpeedBtn = txt;
       btnBg.on('pointerdown', btn.action);
@@ -2600,7 +2608,7 @@ function clearStats() {
 
 const game = new Phaser.Game({
   type:Phaser.AUTO,
-  backgroundColor:'#cecac4',
+  backgroundColor:'#101e32',
   parent:'game-container',
   scene:[BootScene,TutorialScene,ProposalReviewScene,GameScene,CycleEndScene,YearEndScene],
   scale:{
