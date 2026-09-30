@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: brilliant-facility-coop
+    runtime: node
+    plan: free
+    numInstances: 1
+    buildCommand: npm ci --omit=dev --ignore-scripts
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: "off"
+    envVars:
+      - key: NODE_VERSION
+        value: "24"

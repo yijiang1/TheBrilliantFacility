@@ -23,7 +23,7 @@ class ProposalReviewScene extends Phaser.Scene {
 
   create() {
     this.selected = [];   // indices of selected proposals
-    this.proposals = this.generateProposals(8);
+    this.proposals = this.onlineProposals || this.generateProposals(8);
 
     // Background
     const g = this.add.graphics();

@@ -1,0 +1,11 @@
+.git
+.claude
+.codex
+.env*
+node_modules
+rl
+balance
+GDD
+test-results
+playwright-report
+*.png

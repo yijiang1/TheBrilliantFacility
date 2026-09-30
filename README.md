@@ -15,6 +15,19 @@ As the Facility Director, you race between laboratory stations, collect and proc
 
 Open [`BrilliantFacility.html`](BrilliantFacility.html) in any modern browser. No install needed.
 
+## Online co-op (2 players)
+
+Run `npm ci` and `npm start`, then open `http://localhost:3000`. Create a private
+room, share its invite link, and have both players click **Ready**. The host starts
+the session and chooses proposals; each player moves independently. Press **E**
+near your teammate to pass a sample.
+
+For a friend on another network, deploy the included Node server and create the
+room from its public HTTPS URL. Localhost links are only usable on your own
+computer. Deployment files and reconnect limitations are in the
+[online co-op guide](docs/ONLINE_COOP.md). The first version runs the simulation
+in the host's browser, so the host must keep the game open.
+
 ## Developer Mode
 
 Add `?dev` to the URL to enable the dev panel during gameplay:

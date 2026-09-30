@@ -13,3 +13,8 @@ GameManager.html
 .env
 .sync_cursor
 tbf_stats.db
+
+# Online co-op runtime and browser checks
+node_modules/
+playwright-report/
+test-results/

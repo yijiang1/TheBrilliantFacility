@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>The Brilliant Facility — M1 Prototype</title>
 <link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/online.css">
 </head>
 <body>
 <div id="game-container"></div>
@@ -13,11 +14,17 @@
   CLICK — ACCEPT PROPOSALS &nbsp;|&nbsp;
   [ESC] — PAUSE
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
+<script>
+// Keep the downloadable solo prototype usable; hosted games use the pinned local build.
+document.write('<script src="' + (location.protocol === 'file:'
+  ? 'https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js'
+  : '/vendor/phaser.min.js') + '"><\/script>');
+</script>
 <script src="js/data.js"></script>
 <script src="js/ProposalReviewScene.js"></script>
 <script src="js/CycleEndScene.js"></script>
 <script src="js/YearEndScene.js"></script>
+<script src="js/online.js"></script>
 <script src="js/game.js"></script>
 <script src="js/bot.js"></script>
 </body>
