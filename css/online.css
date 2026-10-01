@@ -1,16 +1,24 @@
 [hidden] { display: none !important; }
 #online-panel { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; overflow-y: auto; color: #edf9f8; background: radial-gradient(ellipse at 25% 10%, #23515e, #101e32 65%); }
-.online-card { width: min(100%, 620px); padding: 40px; border: 1px solid #3a626a; border-radius: 18px; background: #142c3dec; box-shadow: 0 24px 90px #07111dcc; }
+.online-card { width: min(100%, 760px); padding: 40px; border: 1px solid #3a626a; border-radius: 18px; background: #142c3dec; box-shadow: 0 24px 90px #07111dcc; }
 .online-eyebrow { font-size: 11px; letter-spacing: 3px; color: #8edbd2; margin-bottom: 22px; }
 .online-card h1 { font-size: clamp(30px, 5vw, 48px); line-height: 1.12; letter-spacing: -1px; margin-bottom: 20px; }
 .online-card h1 span { color: #72d8c6; }
 .online-description { color: #b9cfda; font-size: 16px; line-height: 1.6; margin-bottom: 28px; }
-#online-panel button, #online-bar button { cursor: pointer; font: bold 14px Arial, sans-serif; border: 1px solid #54828b; border-radius: 7px; padding: 12px 16px; color: #effcf8; background: #254657; }
-#online-panel button:hover, #online-bar button:hover { background: #346173; }
+#online-panel button, #online-bar button, #solo-bar button { cursor: pointer; font: bold 14px Arial, sans-serif; border: 1px solid #54828b; border-radius: 7px; padding: 12px 16px; color: #effcf8; background: #254657; }
+#online-panel button:hover, #online-bar button:hover, #solo-bar button:hover { background: #346173; }
 #online-panel button:disabled { opacity: .45; cursor: default; }
 #online-panel button.primary { color: #102f36; background: #72d8c6; border-color: #72d8c6; }
 #online-panel button.quiet { background: transparent; border-color: transparent; color: #b9cfda; }
-#online-create { width: 100%; margin-bottom: 14px; }
+.online-mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.online-mode-card { display: flex; min-height: 210px; flex-direction: column; align-items: flex-start; padding: 22px; border: 1px solid #416672; border-radius: 12px; background: #102638; }
+.online-mode-card.coop { border-color: #4f8e87; background: linear-gradient(145deg, #12333b, #102638); }
+.online-mode-card h2 { margin: 10px 0 7px; font-size: 21px; }
+.online-mode-card p { flex: 1; color: #a9c1cc; font-size: 13px; line-height: 1.5; margin-bottom: 18px; }
+.online-mode-card button { width: 100%; }
+.online-mode-icon { color: #72d8c6; font-size: 13px; letter-spacing: 4px; }
+.online-divider { display: flex; align-items: center; gap: 12px; margin: 22px 0 4px; color: #89a5b2; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+.online-divider::before, .online-divider::after { content: ''; height: 1px; flex: 1; background: #385765; }
 .online-join { display: flex; gap: 8px; margin: 10px 0; }
 #online-panel input { min-width: 0; flex: 1; border: 1px solid #54828b; border-radius: 7px; background: #0c2030; color: #effcf8; padding: 12px; font: 14px Arial, sans-serif; }
 #online-panel input::placeholder { color: #91abb9; }
@@ -20,8 +28,9 @@
 .online-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .online-footnote, .online-controls { font-size: 12px; line-height: 1.6; color: #9bb7c4; margin-top: 22px; }
 #online-message { font-size: 14px; line-height: 1.5; color: #ffe0a4; margin-top: 18px; min-height: 21px; }
-#online-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 500; background: #142c3df5; color: #d4f5ef; padding: 5px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font: 12px Arial, sans-serif; }
-#online-bar button { padding: 5px 10px; font-size: 12px; }
+#online-bar, #solo-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 500; background: #142c3df5; color: #d4f5ef; padding: 5px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font: 12px Arial, sans-serif; }
+#online-bar button, #solo-bar button { padding: 5px 10px; font-size: 12px; }
+#solo-bar { background: #11293af0; color: #a9c9d2; }
 #online-bar.waiting { background: #664917; color: #fff5db; }
-body.online-playing #game-container { height: calc(100vh - 38px); }
-@media (max-width: 600px) { .online-card { padding: 24px; } .online-join { flex-wrap: wrap; } }
+body.online-playing #game-container, body.solo-playing #game-container { height: calc(100vh - 38px); }
+@media (max-width: 600px) { .online-card { padding: 24px; } .online-mode-grid { grid-template-columns: 1fr; } .online-mode-card { min-height: 170px; } .online-join { flex-wrap: wrap; } }

@@ -52,12 +52,25 @@
       panel.innerHTML = `
         <div class="online-card">
           <p class="online-eyebrow">THE BRILLIANT FACILITY</p>
-          <h1>Better science.<br><span>Two lab coats.</span></h1>
-          <p class="online-description">Run the facility together. Prepare samples, share the workload, and race the beamtime clock.</p>
+          <h1>Choose how to<br><span>run the facility.</span></h1>
+          <p class="online-description">Manage the synchrotron on your own, or open a private room for one teammate.</p>
           <div id="online-entry">
-            <button id="online-create" class="primary">Create a private room</button>
-            <div class="online-join"><input id="online-code" aria-label="Room code or invite link" placeholder="Room code or invite link" maxlength="300" autocomplete="off"><button id="online-join">Join room</button></div>
-            <button id="online-solo" class="quiet">Play solo</button>
+            <div class="online-mode-grid">
+              <section class="online-mode-card solo">
+                <span class="online-mode-icon" aria-hidden="true">●</span>
+                <h2>Solo</h2>
+                <p>Learn the facility and manage every station yourself.</p>
+                <button id="online-solo">Play solo</button>
+              </section>
+              <section class="online-mode-card coop">
+                <span class="online-mode-icon" aria-hidden="true">● ●</span>
+                <h2>Online co-op</h2>
+                <p>Create a private two-player room and share an invite.</p>
+                <button id="online-create" class="primary">Create room</button>
+              </section>
+            </div>
+            <div class="online-divider"><span>or join a teammate</span></div>
+            <div class="online-join"><input id="online-code" aria-label="Room code or invite link" placeholder="Paste room code or invite link" maxlength="300" autocomplete="off"><button id="online-join">Join room</button></div>
           </div>
           <div id="online-lobby" hidden>
             <label class="online-label" for="online-invite">INVITE YOUR TEAMMATE</label>
@@ -74,10 +87,15 @@
       bar.id = 'online-bar'; bar.hidden = true;
       bar.innerHTML = '<span id="online-status"></span><button id="online-exit">Leave room</button>';
       document.body.append(bar);
+      const soloBar = document.createElement('div');
+      soloBar.id = 'solo-bar'; soloBar.hidden = true;
+      soloBar.innerHTML = '<span>Solo mode</span><button id="solo-menu">Change mode</button>';
+      document.body.append(soloBar);
       $('online-create').onclick = () => this.connect({ type: 'create' });
       $('online-join').onclick = () => this.join($('online-code').value);
       $('online-code').onkeydown = e => { if (e.key === 'Enter') this.join(e.target.value); };
-      $('online-solo').onclick = () => { panel.hidden = true; };
+      $('online-solo').onclick = () => this.enterSolo();
+      $('solo-menu').onclick = () => this.showModeMenu();
       $('online-ready').onclick = () => this.send({ type: 'ready', ready: !this.room?.players[this.role]?.ready });
       $('online-start').onclick = () => this.send({ type: 'start' });
       $('online-leave').onclick = $('online-exit').onclick = () => this.leave();
@@ -87,6 +105,51 @@
       };
     }
     message(text) { $('online-message').textContent = text; }
+    suspendSolo() {
+      if (this.suspendedScenes?.length) return;
+      const scenes = this.game?.scene.getScenes(true).filter(s => s.scene.key !== 'Boot') || [];
+      this.suspendedScenes = scenes.map(scene => ({
+        scene,
+        timePaused: scene.time.paused,
+        inputEnabled: scene.input.enabled,
+        keyboardEnabled: scene.input.keyboard?.enabled,
+      }));
+      for (const saved of this.suspendedScenes) {
+        saved.scene.time.paused = true;
+        saved.scene.input.enabled = false;
+        if (saved.scene.input.keyboard) saved.scene.input.keyboard.enabled = false;
+      }
+    }
+    resumeSolo() {
+      for (const saved of this.suspendedScenes || []) {
+        if (!saved.scene.sys?.isActive()) continue;
+        saved.scene.time.paused = saved.timePaused;
+        saved.scene.input.enabled = saved.inputEnabled;
+        if (saved.scene.input.keyboard) saved.scene.input.keyboard.enabled = saved.keyboardEnabled;
+      }
+      this.suspendedScenes = null;
+    }
+    enterSolo() {
+      this.resumeSolo();
+      this.soloActive = true;
+      document.activeElement?.blur();
+      $('online-panel').hidden = true;
+      $('solo-bar').hidden = false;
+      document.body.classList.add('solo-playing');
+      this.game?.scale.refresh();
+    }
+    showModeMenu() {
+      if (this.enabled) return;
+      this.suspendSolo();
+      $('online-panel').hidden = false;
+      $('online-entry').hidden = false;
+      $('online-lobby').hidden = true;
+      $('solo-bar').hidden = true;
+      document.body.classList.remove('solo-playing');
+      $('online-solo').textContent = this.soloActive ? 'Continue solo' : 'Play solo';
+      this.message(this.soloActive ? 'Your solo session is paused while you choose.' : '');
+      this.game?.scale.refresh();
+    }
     join(value) {
       let code = value.trim();
       try { code = new URL(code).searchParams.get('room') || code; } catch {}
@@ -180,8 +243,11 @@
     }
     begin(startHost) {
       this.started = true;
+      this.suspendedScenes = null;
+      this.soloActive = false;
       document.activeElement?.blur();
-      $('online-panel').hidden = true; $('online-bar').hidden = false;
+      $('online-panel').hidden = true; $('online-bar').hidden = false; $('solo-bar').hidden = true;
+      document.body.classList.remove('solo-playing');
       document.body.classList.add('online-playing'); this.game.scale.refresh();
       if (startHost && this.role === 'host') {
         this.game.scene.getScenes(true).forEach(s => this.game.scene.stop(s.scene.key));
@@ -203,6 +269,7 @@
       }, 50);
       const code = new URLSearchParams(location.search).get('room');
       if (code) { $('online-code').value = code; this.join(code); }
+      setTimeout(() => { if (!$('online-panel').hidden) this.suspendSolo(); }, 0);
     }
     installScenes(classes) {
       for (const Scene of classes) {
@@ -402,16 +469,22 @@
     }
     leave() { this.send({ type: 'leave' }); this.end('You left the room.'); }
     end(reason) {
+      const hadStarted = this.started;
       this.intentionalClose = true; clearTimeout(this.retry); this.ws?.close();
       if (this.code) sessionStorage.removeItem(`tbf-room-${this.code}`);
       document.body.classList.remove('online-playing');
       this.enabled = false; this.started = false; this.blocked = false; this.room = null;
       this.token = null; this.scene = null; this.epoch = 0; this.keys.clear(); this.pendingSnapshot = null;
-      this.game?.scene.getScenes(true).forEach(s => this.game.scene.stop(s.scene.key));
-      this.game?.scene.start('Tutorial');
+      if (hadStarted || !this.suspendedScenes?.length) {
+        this.suspendedScenes = null;
+        this.game?.scene.getScenes(true).forEach(s => this.game.scene.stop(s.scene.key));
+        this.game?.scene.start('Tutorial');
+        setTimeout(() => this.suspendSolo(), 0);
+      }
       const url = new URL(location.href); url.searchParams.delete('room'); history.replaceState(null, '', url);
-      $('online-panel').hidden = false; $('online-bar').hidden = true;
+      $('online-panel').hidden = false; $('online-bar').hidden = true; $('solo-bar').hidden = true;
       $('online-entry').hidden = false; $('online-lobby').hidden = true;
+      $('online-solo').textContent = this.soloActive && !hadStarted ? 'Continue solo' : 'Play solo';
       this.message(reason);
     }
   }

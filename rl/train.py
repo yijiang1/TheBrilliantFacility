@@ -1,329 +1,207 @@
+"""Train PPO on versioned balance rules; select checkpoints by actual game score.
+
+New runs never overwrite the legacy models/ directory. Each checkpoint includes
+its own normalization statistics and a manifest. Evaluation uses identical seeds.
 """
-train.py — Train and evaluate a PPO agent on FacilityEnv.
-
-Quick start
-    pip install -r requirements.txt
-    python train.py               # train + evaluate
-    python train.py --eval-only   # evaluate a saved model
-
-Outputs
-    models/ppo_facility.zip       trained policy
-    models/ppo_facility_stats     normalisation statistics
-"""
-
 import argparse
-import os
-import time
+import json
+from importlib.metadata import version
+from pathlib import Path
 import numpy as np
 import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
-
 from stable_baselines3 import PPO
+from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.vec_env import VecNormalize
-from stable_baselines3.common.callbacks import EvalCallback
-from stable_baselines3.common.monitor import Monitor
-
-from facility_env import FacilityEnv
-
-MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
-os.makedirs(MODEL_DIR, exist_ok=True)
-MODEL_PATH = os.path.join(MODEL_DIR, "ppo_facility")
-STATS_PATH = os.path.join(MODEL_DIR, "ppo_facility_stats")
-
-
-# ── Environment factory ───────────────────────────────────────────────────────
-
-def make_env(n_jobs: int = 4, seed: int = 0):
-    def _init():
-        env = FacilityEnv(n_jobs=n_jobs)
-        env = Monitor(env)
-        env.reset(seed=seed)
-        return env
-    return _init
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+import gymnasium as gym
+if __package__:
+    from .balance_config import BalanceConfig, RULES_VERSION
+    from .facility_env import FacilityEnv
+    from .experiments import simulate, paired_difference, write_report
+else:
+    from balance_config import BalanceConfig, RULES_VERSION
+    from facility_env import FacilityEnv
+    from experiments import simulate, paired_difference, write_report
 
 
-# ── Heuristic baseline ────────────────────────────────────────────────────────
+class GameScoreReward(gym.Wrapper):
+    """Evaluation rewards exclude training-only shaping bonuses."""
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)
+        self.previous = info['reputation']
+        return obs, info
 
-def run_heuristic(n_episodes: int = 100, n_jobs: int = 4, seed: int = 42) -> dict:
-    """Run the rule-based bot (mirrors bot.js _decide) and collect stats."""
-    env = FacilityEnv(n_jobs=n_jobs)
-    rng = np.random.default_rng(seed)
-    reps, samples = [], []
-
-    for ep in range(n_episodes):
-        obs, _ = env.reset(seed=int(rng.integers(1 << 31)))
-        done = False
-        while not done:
-            action = env.heuristic_action()
-            _, _, done, _, _ = env.step(action)
-        reps.append(env.reputation)
-        total = sum(j.done for j in env.jobs.values())
-        samples.append(total)
-
-    return {
-        "rep_mean":     float(np.mean(reps)),
-        "rep_std":      float(np.std(reps)),
-        "rep_max":      float(np.max(reps)),
-        "samples_mean": float(np.mean(samples)),
-    }
+    def step(self, action):
+        obs, _, done, truncated, info = self.env.step(action)
+        reward = info['reputation'] - self.previous
+        self.previous = info['reputation']
+        return obs, reward, done, truncated, info
 
 
-# ── RL agent evaluation ───────────────────────────────────────────────────────
+class SaveBestStats(BaseCallback):
+    def __init__(self, path):
+        super().__init__()
+        self.path = str(path)
 
-def run_agent(model: PPO, vec_env: VecNormalize,
-              n_episodes: int = 100, n_jobs: int = 4) -> dict:
-    """Evaluate a trained PPO agent."""
-    eval_env = VecNormalize(
-        make_vec_env(make_env(n_jobs=n_jobs), n_envs=1),
-        norm_obs=True, norm_reward=False, clip_obs=10.0,
-    )
-    # Copy running statistics from training env so normalisation is consistent
-    eval_env.obs_rms  = vec_env.obs_rms
-    eval_env.ret_rms  = vec_env.ret_rms
-    eval_env.training = False
-
-    reps, samples = [], []
-
-    for _ in range(n_episodes):
-        obs = eval_env.reset()
-        done = False
-        final_info = {}
-        while not done:
-            action, _ = model.predict(obs, deterministic=True)
-            obs, _, dones, infos = eval_env.step(action)
-            done = bool(dones[0])
-            if done:
-                # SB3 auto-resets on done=True; terminal stats live in the
-                # terminal step's info dict before the env resets.
-                final_info = infos[0]
-        reps.append(int(final_info.get("reputation", 0)))
-        samples.append(int(final_info.get("samples_done", 0)))
-
-    return {
-        "rep_mean":     float(np.mean(reps)),
-        "rep_std":      float(np.std(reps)),
-        "rep_max":      float(np.max(reps)),
-        "samples_mean": float(np.mean(samples)),
-    }
+    def _on_step(self):
+        self.model.get_vec_normalize_env().save(self.path)
+        return True
 
 
-# ── Behavioural cloning pre-training ─────────────────────────────────────────
-
-def bc_pretrain(
-    model:    PPO,
-    vec_env:  VecNormalize,
-    n_demos:  int   = 2000,
-    n_epochs: int   = 30,
-    lr:       float = 3e-4,
-    n_jobs:   int   = 4,
-    seed:     int   = 0,
-) -> None:
-    """
-    Pre-train the PPO policy via behavioural cloning on heuristic demonstrations.
-
-    Collects n_demos heuristic episodes, normalises observations using the
-    training env's running statistics, and minimises cross-entropy between
-    the policy's action distribution and the heuristic labels.
-    """
-    print("── Behavioural cloning pre-training ──")
-    env = FacilityEnv(n_jobs=n_jobs)
-    rng = np.random.default_rng(seed)
-    obs_buf, act_buf = [], []
-
-    for ep in range(n_demos):
-        obs, _ = env.reset(seed=int(rng.integers(1 << 31)))
-        done = False
-        while not done:
-            action = env.heuristic_action()
-            obs_buf.append(obs.copy())
-            act_buf.append(action)
-            obs, _, done, _, _ = env.step(action)
-
-    obs_np = np.array(obs_buf, dtype=np.float32)
-    act_np = np.array(act_buf, dtype=np.int64)
-    n_samples = len(obs_np)
-    print(f"   collected {n_demos} episodes → {n_samples:,} state-action pairs")
-
-    # Apply VecNormalize's obs scaling (same as training) so the policy input
-    # distribution matches what it will see during PPO training.
-    obs_mean = vec_env.obs_rms.mean.astype(np.float32)
-    obs_std  = np.sqrt(vec_env.obs_rms.var.astype(np.float32) + 1e-8)
-    obs_norm = np.clip((obs_np - obs_mean) / obs_std, -10.0, 10.0)
-
-    obs_t = torch.FloatTensor(obs_norm)
-    act_t = torch.LongTensor(act_np)
-    loader = DataLoader(TensorDataset(obs_t, act_t), batch_size=512, shuffle=True)
-
-    # Jointly update the policy (actor + value net) via BC loss on the actor.
-    optim = torch.optim.Adam(model.policy.parameters(), lr=lr)
-    ce    = nn.CrossEntropyLoss()
-
-    for epoch in range(n_epochs):
-        total_loss = 0.0
-        for batch_obs, batch_act in loader:
-            latent_pi, _ = model.policy.mlp_extractor(batch_obs)
-            logits = model.policy.action_net(latent_pi)
-            loss = ce(logits, batch_act)
-            optim.zero_grad()
-            loss.backward()
-            optim.step()
-            total_loss += loss.item()
-        avg = total_loss / len(loader)
-        if (epoch + 1) % 10 == 0:
-            print(f"   epoch {epoch+1:3d}/{n_epochs}  loss={avg:.4f}")
-
-    print("   BC pre-training complete\n")
-
-
-# ── Training ──────────────────────────────────────────────────────────────────
-
-def train(
-    total_timesteps: int = 500_000,
-    n_envs:          int = 8,
-    n_jobs:          int = 4,
-    seed:            int = 42,
-):
-    print(f"\n{'='*60}")
-    print("  The Brilliant Facility — PPO training")
-    print(f"  timesteps={total_timesteps:,}  envs={n_envs}  jobs={n_jobs}")
-    print(f"{'='*60}\n")
-
-    # Vectorised + normalised training environment
-    vec_env = make_vec_env(make_env(n_jobs=n_jobs, seed=seed), n_envs=n_envs)
-    vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=10.0)
-
-    # Separate eval environment — obs stats are synced from vec_env before each
-    # evaluation so the policy sees properly-normalised observations.
-    eval_env = VecNormalize(
-        make_vec_env(make_env(n_jobs=n_jobs, seed=seed + 99), n_envs=1),
-        norm_obs=True, norm_reward=False, clip_obs=10.0,
-    )
-
-    class _SyncedEvalCallback(EvalCallback):
-        """Syncs obs normalisation stats from the training env before each eval."""
-        def _on_step(self) -> bool:
-            if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
-                self.eval_env.obs_rms = vec_env.obs_rms
-                self.eval_env.training = False
-            return super()._on_step()
-
-    eval_callback = _SyncedEvalCallback(
-        eval_env,
-        best_model_save_path=MODEL_DIR,
-        log_path=MODEL_DIR,
-        eval_freq=max(10_000 // n_envs, 1),
-        n_eval_episodes=20,
-        deterministic=True,
-        verbose=0,
-    )
-
-    model = PPO(
-        "MlpPolicy",
-        vec_env,
-        n_steps=2048,
-        batch_size=256,
-        n_epochs=10,
-        learning_rate=3e-4,
-        gamma=0.99,
-        gae_lambda=0.95,
-        clip_range=0.2,
-        ent_coef=0.01,          # encourage exploration early on
-        vf_coef=0.5,
-        max_grad_norm=0.5,
-        policy_kwargs=dict(net_arch=[256, 256]),
-        verbose=1,
-        seed=seed,
-    )
-
-    print("── Heuristic baseline (before training) ──")
-    baseline = run_heuristic(n_episodes=200, n_jobs=n_jobs, seed=seed)
-    print(f"   rep  {baseline['rep_mean']:.1f} ± {baseline['rep_std']:.1f}  "
-          f"(max {baseline['rep_max']:.0f})")
-    print(f"   samples/cycle  {baseline['samples_mean']:.1f}\n")
-
-    # Seed vec_env obs stats with a short warm-up so BC obs normalisation is
-    # meaningful (pure-zero mean / unit-var at init would distort scaling).
-    _warmup_obs = []
-    env_tmp = FacilityEnv(n_jobs=n_jobs)
-    rng_tmp = np.random.default_rng(seed)
-    for _ in range(500):
-        obs, _ = env_tmp.reset(seed=int(rng_tmp.integers(1 << 31)))
-        done = False
-        while not done:
-            _warmup_obs.append(obs)
-            obs, _, done, _, _ = env_tmp.step(env_tmp.heuristic_action())
-    _warmup_arr = np.array(_warmup_obs, dtype=np.float32)
-    vec_env.obs_rms.update(_warmup_arr)
-
-    bc_pretrain(model, vec_env, n_demos=2000, n_epochs=30, n_jobs=n_jobs, seed=seed)
-
-    t0 = time.time()
-    model.learn(total_timesteps=total_timesteps, callback=eval_callback)
-    elapsed = time.time() - t0
-    print(f"\nTraining finished in {elapsed:.0f}s "
-          f"({total_timesteps / elapsed:.0f} steps/s)\n")
-
-    model.save(MODEL_PATH)
-    vec_env.save(STATS_PATH)
-    print(f"Model saved → {MODEL_PATH}.zip")
-
-    print("── RL agent evaluation (after training) ──")
-    agent_stats = run_agent(model, vec_env, n_episodes=200, n_jobs=n_jobs)
-    print(f"   rep  {agent_stats['rep_mean']:.1f} ± {agent_stats['rep_std']:.1f}  "
-          f"(max {agent_stats['rep_max']:.0f})")
-    print(f"   samples/cycle  {agent_stats['samples_mean']:.1f}\n")
-
-    print("── Comparison ──")
-    delta = agent_stats["rep_mean"] - baseline["rep_mean"]
-    pct   = 100 * delta / max(baseline["rep_mean"], 1)
-    sign  = "+" if delta >= 0 else ""
-    print(f"   Rep/cycle: {sign}{delta:.1f} ({sign}{pct:.1f}%) vs heuristic\n")
-
-    return model, vec_env
-
-
-# ── Eval-only mode ────────────────────────────────────────────────────────────
-
-def eval_only(n_jobs: int = 4):
-    if not os.path.exists(MODEL_PATH + ".zip"):
-        print("No saved model found. Run without --eval-only first.")
+def bc_pretrain(model, vec_env, config, episodes, epochs, seed):
+    if not episodes or not epochs:
         return
+    env = FacilityEnv(config=config, record_events=False)
+    observations, actions = [], []
+    for episode in range(episodes):
+        obs, _ = env.reset(seed=seed+episode)
+        for _ in range(100000):
+            action = env.heuristic_action()
+            observations.append(obs)
+            actions.append(action)
+            obs, _, done, _, _ = env.step(action)
+            if done:
+                break
+        else:
+            raise RuntimeError('BC demonstration exceeded step limit')
+    obs = np.asarray(observations, dtype=np.float32)
+    vec_env.obs_rms.update(obs)
+    inputs = torch.as_tensor(vec_env.normalize_obs(obs), device=model.device)
+    targets = torch.as_tensor(actions, dtype=torch.long, device=model.device)
+    optimizer = torch.optim.Adam(model.policy.parameters(), lr=3e-4)
+    for _ in range(epochs):
+        order = torch.randperm(len(inputs), device=model.device)
+        for indices in order.split(256):
+            distribution = model.policy.get_distribution(inputs[indices])
+            loss = -distribution.log_prob(targets[indices]).mean()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+    env.close()
 
-    dummy_env = VecNormalize(
-        make_vec_env(make_env(n_jobs=n_jobs), n_envs=1),
-        norm_obs=True, norm_reward=True, clip_obs=10.0,
-    )
-    vec_env = VecNormalize.load(STATS_PATH, dummy_env)
-    model   = PPO.load(MODEL_PATH, env=vec_env)
 
-    print("\n── Heuristic baseline ──")
-    b = run_heuristic(n_episodes=200, n_jobs=n_jobs)
-    print(f"   rep {b['rep_mean']:.1f} ± {b['rep_std']:.1f}  samples {b['samples_mean']:.1f}")
+def train(config, output, total_timesteps=500000, n_envs=8, seed=42,
+          n_steps=256, bc_episodes=20, bc_epochs=5, eval_episodes=20):
+    output = Path(output)
+    if output.exists() and any(output.iterdir()):
+        raise ValueError('Training output must be empty; use a new run directory')
+    output.mkdir(parents=True, exist_ok=True)
+    vec = VecNormalize(make_vec_env(lambda: FacilityEnv(config=config, record_events=False),
+                                   n_envs=n_envs, seed=seed), norm_obs=True, norm_reward=True)
+    evaluation = VecNormalize(make_vec_env(lambda: GameScoreReward(FacilityEnv(config=config, record_events=False)),
+                                          n_envs=1, seed=seed+1000000), norm_obs=True, norm_reward=False)
+    evaluation.training = False
+    model = PPO('MlpPolicy', vec, n_steps=n_steps, batch_size=min(256, n_steps*n_envs),
+                n_epochs=10, learning_rate=3e-4, gamma=1.0, gae_lambda=.95,
+                ent_coef=.01, policy_kwargs=dict(net_arch=[256, 256]),
+                seed=seed, device='cpu', verbose=1)
+    manifest = dict(rules_version=RULES_VERSION, observation_version=2,
+                    packages={name:version(name) for name in ('numpy','gymnasium','torch','stable-baselines3')},
+                    observation_shape=list(vec.observation_space.shape),
+                    config=config.to_dict(), config_hash=config.fingerprint,
+                    seed=seed, training_reward='game score delta + potential difference (zero episode total)',
+                    training_parameters=dict(total_timesteps=total_timesteps, n_envs=n_envs, n_steps=n_steps,
+                                             bc_episodes=bc_episodes, bc_epochs=bc_epochs, eval_episodes=eval_episodes),
+                    selection_metric='net game reputation; no shaping',
+                    gamma_per_decision=1.0,
+                    checkpoints={'best': {'model':'best_model.zip','stats':'best_stats.pkl'},
+                                 'final': {'model':'final_model.zip','stats':'final_stats.pkl'}})
+    (output/'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
+    bc_pretrain(model, vec, config, bc_episodes, bc_epochs, seed)
+    # EvalCallback synchronizes normalization statistics before evaluation.
+    callback = EvalCallback(evaluation, callback_on_new_best=SaveBestStats(output/'best_stats.pkl'),
+                            best_model_save_path=str(output), log_path=str(output),
+                            eval_freq=max(1, min(10000, total_timesteps)//n_envs),
+                            n_eval_episodes=eval_episodes, deterministic=True)
+    try:
+        model.learn(total_timesteps=total_timesteps, callback=callback)
+        model.save(output/'final_model')
+        vec.save(output/'final_stats.pkl')
+    finally:
+        vec.close()
+        evaluation.close()
+    return output
 
-    print("\n── Trained agent ──")
-    a = run_agent(model, vec_env, n_episodes=200, n_jobs=n_jobs)
-    print(f"   rep {a['rep_mean']:.1f} ± {a['rep_std']:.1f}  samples {a['samples_mean']:.1f}")
+
+class SavedPolicy:
+    def __init__(self, directory, config, checkpoint='best', allow_config_change=False):
+        directory = Path(directory)
+        manifest = json.loads((directory/'manifest.json').read_text())
+        if manifest['rules_version'] != RULES_VERSION or manifest['observation_version'] != 2:
+            raise ValueError('Incompatible model rules or observations; retrain this model')
+        if manifest['config_hash'] != config.fingerprint and not allow_config_change:
+            raise ValueError('Model configuration differs; use its config or explicitly allow a transfer evaluation')
+        files = manifest['checkpoints'][checkpoint]
+        raw = DummyVecEnv([lambda: FacilityEnv(config=config, record_events=False)])
+        if list(raw.observation_space.shape) != manifest['observation_shape']:
+            raw.close()
+            raise ValueError('Model observation dimensions differ from the experiment')
+        self.norm = VecNormalize.load(directory/files['stats'], raw)
+        self.norm.training = False
+        self.norm.norm_reward = False
+        self.model = PPO.load(directory/files['model'], device='cpu')
+
+    def __call__(self, observation):
+        action, _ = self.model.predict(self.norm.normalize_obs(observation), deterministic=True)
+        return int(action)
+
+    def close(self):
+        self.norm.close()
 
 
-# ── CLI ───────────────────────────────────────────────────────────────────────
+def evaluate(directory, config, seeds, checkpoint='best', allow_config_change=False):
+    policy = SavedPolicy(directory, config, checkpoint, allow_config_change)
+    try:
+        baseline = simulate(config, seeds, 'heuristic')
+        agent = simulate(config, seeds, policy)
+        return dict(command='evaluate', model=str(Path(directory).resolve()), checkpoint=checkpoint,
+                    transfer_evaluation=allow_config_change,
+                    variants={'heuristic':baseline, 'agent':agent},
+                    paired_net_rep_difference=paired_difference(baseline, agent))
+    finally:
+        policy.close()
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--timesteps", type=int, default=500_000)
-    parser.add_argument("--envs",      type=int, default=8)
-    parser.add_argument("--jobs",      type=int, default=4)
-    parser.add_argument("--seed",      type=int, default=42)
-    parser.add_argument("--eval-only", action="store_true")
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--config')
+    parser.add_argument('--output', help='New training run directory')
+    parser.add_argument('--model-dir', help='Versioned run directory to evaluate')
+    parser.add_argument('--report', default='rl/reports/evaluation.json')
+    parser.add_argument('--timesteps', type=int, default=500000)
+    parser.add_argument('--envs', type=int, default=8)
+    parser.add_argument('--n-steps', type=int, default=256)
+    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--episodes', type=int, default=100)
+    parser.add_argument('--bc-episodes', type=int, default=20)
+    parser.add_argument('--bc-epochs', type=int, default=5)
+    parser.add_argument('--eval-episodes', type=int, default=20)
+    parser.add_argument('--eval-only', action='store_true')
+    parser.add_argument('--checkpoint', choices=['best','final'], default='best')
+    parser.add_argument('--allow-config-change', action='store_true')
     args = parser.parse_args()
+    try:
+        if min(args.timesteps, args.envs, args.episodes, args.eval_episodes) < 1 or args.n_steps < 2 or min(args.seed,args.bc_episodes,args.bc_epochs) < 0:
+            raise ValueError('Invalid training/evaluation counts')
+        if args.eval_only:
+            if not args.model_dir:
+                raise ValueError('--eval-only requires --model-dir; legacy models must be retrained for v2')
+            saved = json.loads((Path(args.model_dir)/'manifest.json').read_text())
+            config = BalanceConfig.load(args.config) if args.config else BalanceConfig(**saved['config'])
+            report = evaluate(args.model_dir, config, list(range(args.seed,args.seed+args.episodes)),
+                              args.checkpoint, args.allow_config_change)
+            write_report(args.report, report)
+            print(json.dumps(report['paired_net_rep_difference'], indent=2))
+        else:
+            if not args.output:
+                raise ValueError('Training requires --output pointing to a new run directory')
+            config = BalanceConfig.load(args.config)
+            path = train(config, args.output, args.timesteps, args.envs, args.seed,
+                         args.n_steps, args.bc_episodes, args.bc_epochs, args.eval_episodes)
+            print(f'Run saved: {path.resolve()}')
+    except (ValueError, OSError, KeyError) as exc:
+        parser.error(str(exc))
 
-    if args.eval_only:
-        eval_only(n_jobs=args.jobs)
-    else:
-        train(
-            total_timesteps=args.timesteps,
-            n_envs=args.envs,
-            n_jobs=args.jobs,
-            seed=args.seed,
-        )
+
+if __name__ == '__main__':
+    main()

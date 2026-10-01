@@ -1,0 +1,10 @@
+{
+  "year": 4,
+  "cycle": 10,
+  "ring_stability": 80,
+  "commitment_strategy": "value",
+  "n_jobs": 3,
+  "postdoc_levels": [2],
+  "prep_speeds": [0.9, 1.0],
+  "meas_speeds": [0.85, 1.0, 1.0, 1.0]
+}

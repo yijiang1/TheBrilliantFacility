@@ -1,0 +1,193 @@
+[
+  {
+    "generation": 1,
+    "start_year": 1,
+    "name": "1st Generation",
+    "techniques": [
+      "Powder Diffraction",
+      "X-ray Fluorescence",
+      "Laue Diffraction",
+      "X-ray Topography"
+    ],
+    "applications": [
+      {
+        "name": "Mineral ID",
+        "min_samples": 1,
+        "max_samples": 2,
+        "base_rep": 12,
+        "lab": "dry"
+      },
+      {
+        "name": "Steel Alloy",
+        "min_samples": 1,
+        "max_samples": 2,
+        "base_rep": 16,
+        "lab": "dry"
+      },
+      {
+        "name": "Crystal Structure",
+        "min_samples": 1,
+        "max_samples": 3,
+        "base_rep": 20,
+        "lab": "wet"
+      },
+      {
+        "name": "Pigment Analysis",
+        "min_samples": 1,
+        "max_samples": 2,
+        "base_rep": 10,
+        "lab": "wet"
+      }
+    ]
+  },
+  {
+    "generation": 2,
+    "start_year": 4,
+    "name": "2nd Generation",
+    "techniques": [
+      "EXAFS / XANES",
+      "SAXS",
+      "Protein Crystallography"
+    ],
+    "applications": [
+      {
+        "name": "Catalyst Study",
+        "min_samples": 2,
+        "max_samples": 3,
+        "base_rep": 14,
+        "lab": "dry"
+      },
+      {
+        "name": "Protein Fragment",
+        "min_samples": 2,
+        "max_samples": 3,
+        "base_rep": 17,
+        "lab": "wet"
+      },
+      {
+        "name": "Environmental Sample",
+        "min_samples": 1,
+        "max_samples": 3,
+        "base_rep": 11,
+        "lab": "dry"
+      },
+      {
+        "name": "Pharmaceutical",
+        "min_samples": 2,
+        "max_samples": 4,
+        "base_rep": 20,
+        "lab": "wet"
+      },
+      {
+        "name": "Battery Electrode",
+        "min_samples": 2,
+        "max_samples": 3,
+        "base_rep": 15,
+        "lab": "dry"
+      }
+    ]
+  },
+  {
+    "generation": 3,
+    "start_year": 7,
+    "name": "3rd Generation",
+    "techniques": [
+      "Micro-CT",
+      "Micro-XRF",
+      "XRD Analysis"
+    ],
+    "applications": [
+      {
+        "name": "Drug Target",
+        "min_samples": 2,
+        "max_samples": 4,
+        "base_rep": 16,
+        "lab": "wet"
+      },
+      {
+        "name": "Geological Core",
+        "min_samples": 3,
+        "max_samples": 5,
+        "base_rep": 20,
+        "lab": "dry"
+      },
+      {
+        "name": "Archaeological",
+        "min_samples": 1,
+        "max_samples": 3,
+        "base_rep": 13,
+        "lab": "wet"
+      },
+      {
+        "name": "Semiconductor",
+        "min_samples": 2,
+        "max_samples": 4,
+        "base_rep": 17,
+        "lab": "dry"
+      },
+      {
+        "name": "Nanocomposite",
+        "min_samples": 2,
+        "max_samples": 4,
+        "base_rep": 18,
+        "lab": "wet"
+      }
+    ]
+  },
+  {
+    "generation": 4,
+    "start_year": 11,
+    "name": "4th Generation",
+    "techniques": [
+      "Ptychography",
+      "Serial Crystallography",
+      "Phase Contrast",
+      "Time-Resolved XAS",
+      "Coherent Imaging"
+    ],
+    "applications": [
+      {
+        "name": "Virus Particle",
+        "min_samples": 3,
+        "max_samples": 5,
+        "base_rep": 18,
+        "lab": "wet"
+      },
+      {
+        "name": "Quantum Material",
+        "min_samples": 2,
+        "max_samples": 4,
+        "base_rep": 16,
+        "lab": "dry"
+      },
+      {
+        "name": "Operando Battery",
+        "min_samples": 2,
+        "max_samples": 4,
+        "base_rep": 15,
+        "lab": "dry"
+      },
+      {
+        "name": "Neural Tissue",
+        "min_samples": 3,
+        "max_samples": 5,
+        "base_rep": 17,
+        "lab": "wet"
+      },
+      {
+        "name": "Ultrafast Dynamics",
+        "min_samples": 2,
+        "max_samples": 3,
+        "base_rep": 20,
+        "lab": "wet"
+      },
+      {
+        "name": "Nano-device",
+        "min_samples": 2,
+        "max_samples": 4,
+        "base_rep": 16,
+        "lab": "dry"
+      }
+    ]
+  }
+]

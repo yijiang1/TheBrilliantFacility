@@ -59,18 +59,43 @@ This adds a small overlay in the corner with:
 
 The bot automates everything: in-cycle movement (greedy priority queue over measurement → prep → NPC collection), proposal selection between cycles, and upgrade purchases. Watch the overlay label to see what it's prioritising — sustained time on any one goal reveals a design bottleneck.
 
-### RL Training
+### Balance backend and RL training
 
-`rl/` contains a headless Python simulation of the game loop that trains a policy to outperform the hand-coded bot:
+`rl/` provides a configurable Python backend for seeded cycle simulations, upgrade
+comparisons, multi-year campaign forecasts, and optional PPO training.
 
 ```bash
-cd rl
-pip install -r requirements.txt
-python train.py          # BC pre-training + PPO fine-tuning (~3 min)
-python train.py --eval-only   # evaluate a saved model
+python3 -m pip install -r rl/requirements-core.txt
+python3 rl/balance.py simulate --episodes 100 --output rl/reports/baseline.json
+python3 rl/balance.py sweep --episodes 100 --variants balance/variants.example.json --output rl/reports/upgrades.json
+python3 rl/balance.py campaign --years 5 --episodes 20 --output rl/reports/campaign.json
 ```
 
-The BC+PPO agent earns ~62 rep/cycle vs ~41 for the hand-coded heuristic (+50%). See [`GDD/9. Tech Stack & Roadmap.md`](GDD/9.%20Tech%20Stack%20%26%20Roadmap.md) for full details.
+Reports include actual game reputation, sample completion/loss, travel/wait time, and
+JSON/CSV exports. Training rewards are tracked separately. The backend includes corrected
+deadline and partial-payout rules; its movement and staff simulation approximate the browser.
+
+See **[Balance backend guide](balance/README.md)** for configuration, fidelity limits,
+Python API, tests, and training commands. Original models in `rl/models/` are preserved
+as legacy artifacts; their historical ~62 vs ~41 scores are not comparable to v2 and
+new models must be trained for the corrected rules.
+
+### Jev decision-model experiment
+
+The seeded Python environment can also be played by TypeSafe AI's hosted Jev model.
+The API key stays in the local process; it is never sent to the browser or stored in
+the repository.
+
+```bash
+export TYPESAFE_API_KEY="..."
+python3 -m rl.jev_play --episodes 1 --strict
+```
+
+The command compares Jev with the heuristic on identical seeds and writes JSON/CSV
+results to `rl/reports/jev_evaluation.*`. Jev receives a semantic state snapshot and
+chooses among the environment's 16 actions. Repeated `WAIT` ticks are cached until a
+meaningful state change, and low-confidence answers fall back to the heuristic unless
+`--min-confidence 0` is used.
 
 ## Design Pillars
 

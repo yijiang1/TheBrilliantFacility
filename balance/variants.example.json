@@ -1,0 +1,7 @@
+{
+  "faster_prep": {"prep_speeds": [0.5, 0.5]},
+  "faster_measurement": {"meas_speeds": [0.5, 0.5, 0.5, 0.5]},
+  "one_trained_postdoc": {"postdoc_levels": [3]},
+  "value_selection": {"commitment_strategy": "value"},
+  "legacy_deadline_formula": {"deadline_uses_upgrades": true, "prep_speeds": [0.5, 0.5], "meas_speeds": [0.5, 0.5, 0.5, 0.5]}
+}

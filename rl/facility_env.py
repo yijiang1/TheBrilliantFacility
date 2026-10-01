@@ -9,7 +9,7 @@ Pipeline per sample:
     →  collect result  →  reputation earned
 
 Key simplifications vs the web game
-    Movement   : discrete named locations + precomputed travel-time matrix
+    Movement   : discrete named locations + configurable shortest-arc travel times
     Proximity  : binary — at location or not (no partial 50-px radius)
     NPC slots  : 5 fixed positions evenly spaced around the ring corridor
     No rendering, Phaser, or browser runtime
@@ -24,34 +24,20 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Optional
+if __package__:
+    from .balance_config import BalanceConfig, applications, RULES_VERSION
+else:
+    from balance_config import BalanceConfig, applications, RULES_VERSION
 
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
-# ── Constants (data.js) ──────────────────────────────────────────────────────
-
-CYCLE_SEC      = 180.0
-MAX_HELD       = 3
-MAX_JOB_SLOTS  = 5       # base; upgrades can increase
-
-DUR_PREP_MIN   = 1.0     # seconds
-DUR_PREP_MAX   = 2.0
-DUR_SETUP_MIN  = 1.0
-DUR_SETUP_MAX  = 2.0
-DUR_MEAS_MIN   = 2.0
-DUR_MEAS_MAX   = 10.0
-
-# leave_ms_total = sum(per-sample processing times) × this overhead factor
-NPC_OVERHEAD   = 2.5
-
-# rep loss on NPC departure: max(1, round(lost/total × rep × 0.5))
-NPC_LEAVE_FACTOR = 0.5
+# Player inventory capacity matches the browser.
+MAX_HELD = 3
 
 # ── Facility geometry (game.js) ───────────────────────────────────────────────
 
-SPD      = 172.0    # player movement speed, px/s
 RING_RAD = 190.0    # inner ring radius, px
 PREP_RAD = 275.0    # outer prep-room radius, px
 CORR_R   = (RING_RAD + PREP_RAD) / 2   # mid-corridor radius ≈ 232 px
@@ -107,60 +93,6 @@ PEER = {
     **{f"bl{i}_ctrl":  f"bl{i}_hutch" for i in range(4)},
 }
 
-# seconds to enter/exit a beamline room from the corridor
-ROOM_TRANSIT = 2.5
-# seconds to move between hutch and ctrl within the same beamline room
-INTRA_ROOM   = 2.5
-
-
-def _build_travel_matrix() -> np.ndarray:
-    """Precompute travel time (seconds) between every pair of locations."""
-    T = np.zeros((N_LOCS, N_LOCS), dtype=np.float32)
-    for i, a in enumerate(LOCS):
-        for j, b in enumerate(LOCS):
-            if i == j:
-                continue
-            if PEER.get(a) == b:          # same beamline room
-                T[i, j] = INTRA_ROOM
-                continue
-            # Normalise to [0, 2π) before taking the shorter arc,
-            # so mixed positive/negative angle pairs don't go out of range.
-            ang_diff = (LOC_ANGLE[a] - LOC_ANGLE[b]) % (2 * math.pi)
-            arc_dist = min(ang_diff, 2 * math.pi - ang_diff) * CORR_R
-            T[i, j] = (arc_dist / SPD
-                       + (ROOM_TRANSIT if IN_BL_ROOM[a] else 0.0)
-                       + (ROOM_TRANSIT if IN_BL_ROOM[b] else 0.0))
-    return T
-
-
-TRAVEL_TIME = _build_travel_matrix()   # shape (15, 15)
-
-# ── Application catalogue (data.js) ──────────────────────────────────────────
-#   (name, min_samples, max_samples, base_rep, lab_type)
-
-APPS: list[tuple] = [
-    ("Mineral ID",         1, 2, 12, "dry"),
-    ("Steel Alloy",        1, 2, 16, "dry"),
-    ("Crystal Structure",  1, 3, 20, "wet"),
-    ("Pigment Analysis",   1, 2, 10, "wet"),
-    ("Catalyst Study",     2, 3, 14, "dry"),
-    ("Protein Fragment",   2, 3, 17, "wet"),
-    ("Environmental",      1, 3, 11, "dry"),
-    ("Pharmaceutical",     2, 4, 20, "wet"),
-    ("Battery Electrode",  2, 3, 15, "dry"),
-    ("Drug Target",        2, 4, 16, "wet"),
-    ("Geological Core",    3, 5, 20, "dry"),
-    ("Archaeological",     1, 3, 13, "wet"),
-    ("Semiconductor",      2, 4, 17, "dry"),
-    ("Nanocomposite",      2, 4, 18, "wet"),
-    ("Virus Particle",     3, 5, 18, "wet"),
-    ("Quantum Material",   2, 4, 16, "dry"),
-    ("Operando Battery",   2, 4, 15, "dry"),
-    ("Neural Tissue",      3, 5, 17, "wet"),
-    ("Ultrafast Dynamics", 2, 3, 20, "wet"),
-    ("Nano-device",        2, 4, 16, "dry"),
-]
-
 # ── Data classes ──────────────────────────────────────────────────────────────
 
 @dataclass
@@ -208,7 +140,17 @@ class Job:
     setup_durs:    list  = field(default_factory=list)
     meas_durs:     list  = field(default_factory=list)
 
+    committed: bool = True
+    original_samples: int = 0
+    lost_samples: int = 0
+    penalty_paid: int = 0
+    awarded: int = 0
+    expired: bool = False
+    offer_expires: float = 0.0
+
     def __post_init__(self):
+        if self.original_samples == 0:
+            self.original_samples = self.total_samples
         if self.unstarted == 0:
             self.unstarted = self.total_samples
 
@@ -221,35 +163,32 @@ class FacilityEnv(gym.Env):
 
     Observation  flat float32 vector (see _obs_dim for breakdown).
     Action       Discrete(16): navigate to one of 15 locations, or WAIT.
-    Reward       reputation earned per sample minus reputation lost on NPC departure.
-                 Awarded per-sample (rep/total_samples each) so the signal is
-                 dense enough for PPO to learn from without shaped bonuses.
+    Reward       proposal reputation minus penalties plus potential-based shaping.
+                 Game score is tracked independently in info/reputation.
     """
 
     metadata = {"render_modes": []}
 
-    def __init__(
-        self,
-        n_jobs:          int   = 4,    # committed proposals per cycle
-        prep_cap:        int   = 1,    # slots per prep table (upgradeable)
-        meas_cap:        int   = 1,    # meas slots per beamline (upgradeable)
-        prep_speed:      float = 1.0,  # timer multiplier (<1.0 = faster)
-        meas_speed:      float = 1.0,
-        max_npc_waiting: int   = 2,    # NPC arrival throttle
-    ):
+    def __init__(self, n_jobs=None, prep_cap=None, meas_cap=None,
+                 prep_speed=None, meas_speed=None, max_npc_waiting=None,
+                 config=None, legacy_observation=False, record_events=True):
         super().__init__()
-        self.n_jobs          = n_jobs
-        self.prep_cap        = prep_cap
-        self.meas_cap        = meas_cap
-        self.prep_speed      = prep_speed
-        self.meas_speed      = meas_speed
-        self.max_npc_waiting = max_npc_waiting
-
-        self.observation_space = spaces.Box(
-            low=0.0, high=1.0, shape=(self._obs_dim(),), dtype=np.float32
-        )
+        self.config = config or BalanceConfig()
+        overrides = {k: v for k, v in dict(n_jobs=n_jobs, prep_cap=prep_cap,
+                     meas_cap=meas_cap, max_npc_waiting=max_npc_waiting).items() if v is not None}
+        if prep_speed is not None:
+            overrides['prep_speeds'] = (prep_speed,) * 2
+        if meas_speed is not None:
+            overrides['meas_speeds'] = (meas_speed,) * 4
+        self.config = self.config.changed(**overrides)
+        self.n_jobs = self.config.n_jobs
+        self.prep_cap = self.config.prep_cap
+        self.meas_cap = self.config.meas_cap
+        self.max_npc_waiting = self.config.max_npc_waiting
+        self.legacy_observation = legacy_observation
+        self.record_events = record_events
+        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(self._obs_dim(),), dtype=np.float32)
         self.action_space = spaces.Discrete(N_ACTIONS)
-
         self.rng = np.random.default_rng()
         self._init_state()
 
@@ -266,7 +205,7 @@ class FacilityEnv(gym.Env):
         return (1 + N_LOCS + MAX_HELD * 8
                 + 2 * self.prep_cap * 3
                 + 4 * self.meas_cap * 5
-                + 6 + 5 * 5)
+                + 6 + 5 * 5 + (0 if self.legacy_observation else 5 * 8 + 8))
 
     # ── Reset ─────────────────────────────────────────────────────────────────
 
@@ -274,55 +213,106 @@ class FacilityEnv(gym.Env):
         super().reset(seed=seed)
         if seed is not None:
             self.rng = np.random.default_rng(seed)
+        # Independent streams: upgrades and policy choices never alter job attributes.
+        seeds = self.rng.integers(0, 2**32, size=3)
+        self.job_rng, self.hazard_rng, self.slot_rng = [np.random.default_rng(int(x)) for x in seeds]
         self._init_state()
+        if options:
+            unknown = set(options) - {'reputation'}
+            if unknown:
+                raise ValueError(f'Unknown reset options: {sorted(unknown)}')
+            rep = options.get('reputation', 0)
+            if type(rep) is not int or rep < 0:
+                raise ValueError('Starting reputation must be a nonnegative integer')
+            self.reputation = self.starting_reputation = rep
         self._maybe_accept_jobs()
-        return self._observe(), {}
+        return self._observe(), self.summary()
 
     def _init_state(self):
-        self.time_left       = CYCLE_SEC
-        self.loc             = "wet_prep"
-        self.held:      list[HeldItem]  = []
-        self.prep_wet:  list[PrepSlot]  = []
-        self.prep_dry:  list[PrepSlot]  = []
-        self.meas_slots: list[MeasSlot] = []
-        self.exp_setup_bl   = -1     # beamline index while setup in progress, else -1
-        self.exp_setup_prog = 0.0
-        self.exp_setup_dur  = 1.0
-        self.reputation     = 0
-        self._step_reward   = 0.0
-        self.done           = False
-        self._job_queue:    list[Job] = []
-        self.jobs:          dict[int, Job] = {}
-        self._next_jid      = 0
-        self._npc_slots_used: set[int] = set()
+        if not hasattr(self, 'job_rng'):
+            self.job_rng = np.random.default_rng(0)
+            self.hazard_rng = np.random.default_rng(1)
+            self.slot_rng = np.random.default_rng(2)
+        self.time_left = self.config.cycle_seconds
+        self.loc = 'wet_prep'
+        self.held = []
+        self.prep_wet, self.prep_dry, self.meas_slots = [], [], []
+        self.exp_setup_bl = -1
+        self.exp_setup_job = None
+        self.exp_setup_prog, self.exp_setup_dur = 0.0, 1.0
+        self.reputation = 0
+        self.starting_reputation = 0
+        self.rep_earned = 0
+        self.penalties = 0
+        self._step_reward = 0.0
+        self.done = False
+        self._job_queue = []
+        self.jobs = {}
+        self._next_jid = 0
+        self._npc_slots_used = set()
+        self.events = []
+        self.metrics = dict(travel_seconds=0.0, wait_seconds=0.0, beam_stop_seconds=0.0,
+                            prep_busy_seconds=0.0, meas_busy_seconds=0.0)
+        self.postdocs = [dict(level=level, loc='wet_prep', target=None, eta=0.0)
+                         for level in self.config.postdoc_levels]
+        self.beam_start = float('inf')
+        self.beam_end = float('inf')
+        if self.config.beam_stops and self.hazard_rng.random() < (100-self.config.ring_stability)/100:
+            self.beam_start = float(self.hazard_rng.uniform(0, self.config.cycle_seconds))
+            duration = int(float(self.hazard_rng.uniform(1, 2+(self.config.cycle-1)*0.5)) + 0.5)
+            self.beam_end = self.beam_start + duration
+        self.next_rapid = self.config.rapid_interval
         self._generate_jobs()
 
-    def _generate_jobs(self):
-        for _ in range(self.n_jobs):
-            row = APPS[int(self.rng.integers(len(APPS)))]
-            name, lo, hi, base_rep, lab = row
-            n = int(self.rng.integers(lo, hi + 1))
-            rep = int(base_rep + (n - 1) * 8 + self.rng.integers(-3, 4))
-            bl = int(self.rng.integers(4))
-            jid = self._next_jid; self._next_jid += 1
-            job = Job(job_id=jid, name=name, lab_type=lab,
-                      bl_idx=bl, total_samples=n, rep=rep)
-            self._roll_durations(job)
-            self._job_queue.append(job)
+    @property
+    def elapsed(self):
+        return self.config.cycle_seconds - self.time_left
 
-    def _roll_durations(self, job: Job):
-        """Pre-roll per-sample timings and derive the NPC leave budget (game.js:_rollJobDurations)."""
-        total_sec = 0.0
-        for _ in range(job.total_samples):
-            prep  = float(self.rng.uniform(DUR_PREP_MIN,  DUR_PREP_MAX))  * self.prep_speed
-            setup = float(self.rng.uniform(DUR_SETUP_MIN, DUR_SETUP_MAX))
-            meas  = float(self.rng.uniform(DUR_MEAS_MIN,  DUR_MEAS_MAX))  * self.meas_speed
-            job.prep_durs.append(prep)
+    def _event(self, kind, **data):
+        if self.record_events:
+            self.events.append(dict(time=round(self.elapsed, 6), kind=kind, **data))
+
+    def _new_job(self, committed=True):
+        apps = applications(self.config.year)
+        app = apps[int(self.job_rng.integers(len(apps)))]
+        n = int(self.job_rng.integers(app['min_samples'], app['max_samples']+1))
+        rep = app['base_rep'] + (n-1)*self.config.extra_sample_rep + int(self.job_rng.integers(-self.config.rep_jitter, self.config.rep_jitter+1))
+        job = Job(self._next_jid, app['name'], app['lab'], int(self.job_rng.integers(4)), n,
+                  max(0, rep), committed=committed)
+        self._next_jid += 1
+        self._roll_durations(job)
+        self.jobs[job.job_id] = job
+        return job
+
+    def _generate_jobs(self):
+        if not self.n_jobs:
+            return
+        proposals = [self._new_job() for _ in range(max(self.n_jobs, self.config.proposal_pool_size))]
+        if self.config.commitment_strategy == 'value':
+            proposals.sort(key=lambda j: (-j.rep/j.original_samples, j.original_samples))
+        elif self.config.commitment_strategy == 'small_batches':
+            proposals.sort(key=lambda j: (j.original_samples, -j.rep))
+        self._job_queue = proposals[:self.n_jobs]
+        self.jobs = {j.job_id: j for j in self._job_queue}
+        self._event('proposal_review', selected=[j.job_id for j in self._job_queue],
+                    offered=[dict(id=j.job_id, name=j.name, samples=j.original_samples, rep=j.rep)
+                             for j in proposals])
+
+    def _roll_durations(self, job):
+        base_total, upgraded_total = 0.0, 0.0
+        for _ in range(job.original_samples):
+            prep = float(self.job_rng.uniform(self.config.prep_min, self.config.prep_max))
+            setup = float(self.job_rng.uniform(self.config.setup_min, self.config.setup_max))
+            meas = float(self.job_rng.uniform(self.config.meas_min, self.config.meas_max))
+            p = prep * self.config.prep_speeds[0 if job.lab_type == 'wet' else 1]
+            m = meas * self.config.meas_speeds[job.bl_idx]
+            job.prep_durs.append(p)
             job.setup_durs.append(setup)
-            job.meas_durs.append(meas)
-            total_sec += prep + setup + meas
-        leave_sec = total_sec * NPC_OVERHEAD
-        job.leave_ms = job.leave_ms_total = leave_sec * 1000.0
+            job.meas_durs.append(m)
+            base_total += prep + setup + meas
+            upgraded_total += p + setup + m
+        budget = upgraded_total if self.config.deadline_uses_upgrades else base_total
+        job.leave_ms = job.leave_ms_total = budget * self.config.deadline_multiplier * 1000
 
     # ── NPC throttle ──────────────────────────────────────────────────────────
 
@@ -339,10 +329,10 @@ class FacilityEnv(gym.Env):
             if not free:
                 break
             job = self._job_queue.pop(0)
-            slot = int(self.rng.choice(free))
+            slot = int(self.slot_rng.choice(free))
             job.npc_slot = slot
             self._npc_slots_used.add(slot)
-            self.jobs[job.job_id] = job
+            self._event('job_accepted', job_id=job.job_id, committed=job.committed)
 
     # ── Step ──────────────────────────────────────────────────────────────────
 
@@ -361,91 +351,213 @@ class FacilityEnv(gym.Env):
     def _state_changed(self, snap: tuple) -> bool:
         return snap != self._state_snapshot()
 
-    def step(self, action: int):
+    def travel_time(self, origin, dest):
+        if origin == dest:
+            return 0.0
+        if PEER.get(origin) == dest:
+            return self.config.intra_room
+        def angle(loc):
+            if self.config.npc_positioning and loc.startswith('npc_'):
+                slot = int(loc[4])
+                job = next((j for j in self.jobs.values() if j.npc_slot == slot and not j.npc_gone), None)
+                if job:
+                    a = LOC_ANGLE['wet_prep' if job.lab_type == 'wet' else 'dry_prep']
+                    b = LOC_ANGLE[f'bl{job.bl_idx}_hutch']
+                    return math.atan2(math.sin(a)+math.sin(b), math.cos(a)+math.cos(b))
+            return LOC_ANGLE[loc]
+        diff = (angle(origin)-angle(dest)) % (2*math.pi)
+        return min(diff, 2*math.pi-diff)*CORR_R/self.config.movement_speed + self.config.room_transit*(int(IN_BL_ROOM[origin])+int(IN_BL_ROOM[dest]))
+
+    def step(self, action):
+        if not self.action_space.contains(action):
+            raise ValueError(f'Invalid action: {action}')
+        action = int(action)
         if self.done:
-            return self._observe(), 0.0, True, False, {}
-
+            return self._observe(), 0.0, True, False, self.summary()
+        potential_before = self._potential()
         self._step_reward = 0.0
-
-        if action == ACTION_WAIT or action >= N_LOCS:
+        if action == ACTION_WAIT:
             dt = min(self._time_to_next_event(), self.time_left)
-            self._advance(dt, at_loc=self.loc)
+            self.metrics['wait_seconds'] += dt
+            self._advance(dt, self.loc)
         else:
-            dest   = LOCS[action]
-            travel = float(TRAVEL_TIME[LOC_IDX[self.loc]][action])
-            if travel <= 0:
-                # Already at dest — interact first (free, matches old behaviour for
-                # productive actions like collecting a ready measurement).  Only
-                # advance time when the interaction was a no-op, so an agent that
-                # repeatedly issues "go to current location" with nothing to do
-                # cannot spin forever without consuming sim time.
+            dest = LOCS[action]
+            travel = self.travel_time(self.loc, dest)
+            if travel > 0:
+                available = self.time_left
+                self.metrics['travel_seconds'] += min(travel, available)
+                self._advance(min(travel, available), None)
+                # No teleporting or collecting at/after the cycle boundary.
+                if travel < available and self.time_left > 1e-9:
+                    self.loc = dest
+                    self._interact_at(dest)
+            else:
                 snap = self._state_snapshot()
                 self._interact_at(dest)
                 if not self._state_changed(snap):
                     dt = min(self._time_to_next_event(), self.time_left)
-                    self._advance(dt, at_loc=self.loc)
-            else:
-                travel = min(travel, self.time_left)
-                self._advance(travel, at_loc=None)   # no proximity gating in transit
-                self.loc = dest
-                self._interact_at(dest)
+                    self.metrics['wait_seconds'] += dt
+                    self._advance(dt, self.loc)
+        if self.time_left <= 1e-9:
+            self._finish_cycle()
+        else:
+            self._maybe_accept_jobs()
+        self._step_reward += self.config.shaping * (self._potential() - potential_before)
+        return self._observe(), float(self._step_reward), self.done, False, self.summary()
 
-        self._maybe_accept_jobs()
+    def _potential(self):
+        """Work-in-progress credit; zero at both episode boundaries.
 
-        if self.time_left <= 0:
-            self.done = True
-
-        return self._observe(), float(self._step_reward), self.done, False, {
-            "reputation":   self.reputation,
-            "time_left":    self.time_left,
-            "samples_done": sum(j.done for j in self.jobs.values()),
-        }
-
-    # ── Time advance ──────────────────────────────────────────────────────────
-
-    def _advance(self, dt: float, at_loc: Optional[str]):
+        With gamma=1, shaping telescopes to zero over every episode. Failed or
+        abandoned pipeline work cannot inflate the agent's total reward.
         """
-        Advance all timers by dt seconds.
-        at_loc enables proximity gating for prep/meas/setup timers.
-        NPC leave timers always tick regardless of player position.
-        """
-        if dt <= 0:
+        if self.done:
+            return 0.0
+        units = {}
+        for item in self.held:
+            units[item.job_id] = units.get(item.job_id, 0) + (1 if item.stage == 'raw' else 2)
+        for slot in self.prep_wet + self.prep_dry:
+            units[slot.job_id] = units.get(slot.job_id, 0) + (2 if slot.ready else 1)
+        for slot in self.meas_slots:
+            units[slot.job_id] = units.get(slot.job_id, 0) + 3
+        return sum((units.get(j.job_id, 0) + 3*j.done) * j.rep/j.original_samples
+                   for j in self.jobs.values() if not j.completed)
+
+    def _lose_rep(self, amount, job, reason):
+        actual = min(self.reputation, amount)
+        self.reputation -= actual
+        self.penalties += actual
+        job.penalty_paid += actual
+        self._step_reward -= actual
+        self._event('penalty', job_id=job.job_id, reason=reason, assessed=amount, paid=actual)
+
+    def _finish_cycle(self):
+        if self.done:
             return
-        dt = min(dt, self.time_left)
-        self.time_left -= dt
+        self.time_left = 0.0
+        for job in self.jobs.values():
+            if job.committed and job.done == 0 and not job.completed and not job.npc_gone:
+                self._lose_rep(self.config.commitment_penalty, job, 'unstarted_commitment')
+        self.done = True
+        self._event('cycle_end', reputation=self.reputation)
 
-        # NPC leave timers — always decrement
-        for job in list(self.jobs.values()):
-            if job.unstarted > 0 and not job.npc_gone and job.npc_slot >= 0:
-                job.leave_ms -= dt * 1000.0
-                if job.leave_ms <= 0:
-                    self._npc_leaves(job)
+    def _finish_job(self, job):
+        if job.completed or job.total_samples <= 0 or job.done < job.total_samples:
+            return
+        fraction = job.done / job.original_samples if self.config.prorate_lost_samples else 1.0
+        payout = int(job.rep * fraction + 0.5)
+        job.awarded = payout
+        self.reputation += payout
+        self.rep_earned += payout
+        self._step_reward += payout
+        job.completed = True
+        self._release_slot(job)
+        self._event('job_completed', job_id=job.job_id, samples=job.done,
+                    original_samples=job.original_samples, reputation=payout)
 
-        # Prep timers — only when player is at the matching prep station
-        if at_loc in ("wet_prep", "dry_prep"):
-            slots = self.prep_wet if at_loc == "wet_prep" else self.prep_dry
-            for ps in slots:
-                if not ps.ready:
-                    ps.remaining -= dt
-                    if ps.remaining <= 0:
-                        ps.ready = True
+    def _release_slot(self, job):
+        self._npc_slots_used.discard(job.npc_slot)
+        job.npc_slot = -1
 
-        # Measurement timers — only when player is at the matching ctrl room
-        if at_loc is not None and at_loc.endswith("_ctrl"):
-            bl = int(at_loc[2])
-            for ms in self.meas_slots:
-                if ms.bl_idx == bl and ms.started and not ms.ready:
-                    ms.remaining -= dt
-                    if ms.remaining <= 0:
-                        ms.ready = True
+    def _staff_targets(self):
+        targets = []
+        for loc, slots in [('wet_prep', self.prep_wet), ('dry_prep', self.prep_dry)]:
+            if any(not s.ready for s in slots):
+                targets.append(loc)
+        for bl in range(4):
+            if any(s.bl_idx == bl and s.started and not s.ready for s in self.meas_slots):
+                targets.append(f'bl{bl}_ctrl')
+        if self.exp_setup_bl >= 0:
+            targets.append(f'bl{self.exp_setup_bl}_hutch')
+        return targets
 
-        # Experiment setup — only at the matching hutch while holding a prepped item
-        if (at_loc is not None and at_loc.endswith("_hutch")
-                and self.exp_setup_bl >= 0 and int(at_loc[2]) == self.exp_setup_bl):
-            if any(h.stage == "prepped" for h in self.held):
-                self.exp_setup_prog += dt / self.exp_setup_dur
-                if self.exp_setup_prog >= 1.0:
-                    self._complete_exp_setup()
+    def _advance(self, dt, at_loc):
+        end = max(0.0, self.time_left - min(dt, self.time_left))
+        while self.time_left > end + 1e-9:
+            chunk = min(self.config.quantum, self.time_left-end)
+            # Split at global events so stops/offers do not depend on action length.
+            boundaries = [self.beam_start, self.beam_end]
+            if self.config.rapid_review:
+                boundaries.append(self.next_rapid)
+            for boundary in boundaries:
+                if boundary > self.elapsed + 1e-9:
+                    chunk = min(chunk, boundary-self.elapsed)
+            blocked = self.beam_start <= self.elapsed < self.beam_end
+            targets = self._staff_targets()
+            assigned = {pd['target'] for pd in self.postdocs if pd['target'] in targets}
+            for pd in self.postdocs:
+                if pd['target'] not in targets:
+                    pd['target'] = None
+                if pd['target'] is None:
+                    candidates = [t for t in targets if t not in assigned and (pd['level'] >= 2 or t == at_loc)]
+                    if candidates:
+                        target = min(candidates, key=lambda t: self.travel_time(pd['loc'], t))
+                        pd['target'] = target
+                        pd['eta'] = self.travel_time(pd['loc'], target)
+                if pd['target']:
+                    assigned.add(pd['target'])
+            # Staff arriving during this tick begin work on the next tick.
+            helpers = {pd['target'] for pd in self.postdocs if pd['target'] and pd['eta'] <= 1e-9}
+            near = helpers | ({at_loc} if at_loc else set())
+            self.time_left = max(end, self.time_left-chunk)
+            if blocked:
+                self.metrics['beam_stop_seconds'] += chunk
+            for job in list(self.jobs.values()):
+                if not job.completed and not job.npc_gone and job.npc_slot >= 0:
+                    job.leave_ms -= chunk*1000
+                    if job.leave_ms <= 1e-7:
+                        self._npc_leaves(job)
+            for loc, slots in [('wet_prep', self.prep_wet), ('dry_prep', self.prep_dry)]:
+                if loc in near:
+                    for ps in slots:
+                        if not ps.ready:
+                            self.metrics['prep_busy_seconds'] += min(chunk, ps.remaining)
+                            ps.remaining = max(0.0, ps.remaining-chunk)
+                            ps.ready = ps.remaining <= 1e-9
+            for ms in list(self.meas_slots):
+                loc = f'bl{ms.bl_idx}_ctrl'
+                if loc in near and not blocked and ms.started and not ms.ready:
+                    self.metrics['meas_busy_seconds'] += min(chunk, ms.remaining)
+                    ms.remaining = max(0.0, ms.remaining-chunk)
+                    ms.ready = ms.remaining <= 1e-9
+                    if ms.ready and self.time_left > 1e-9 and any(pd['level'] >= 3 and pd['target'] == loc and pd['eta'] <= 1e-9 for pd in self.postdocs):
+                        self._collect_result(ms)
+            if self.exp_setup_bl >= 0 and f'bl{self.exp_setup_bl}_hutch' in near:
+                if any(h.job_id == self.exp_setup_job and h.stage == 'prepped' for h in self.held):
+                    self.exp_setup_prog += chunk/self.exp_setup_dur
+                    if self.exp_setup_prog >= 1-1e-9:
+                        self._complete_exp_setup()
+            for pd in self.postdocs:
+                if pd['target']:
+                    pd['eta'] = max(0.0, pd['eta']-chunk)
+                    if pd['eta'] == 0:
+                        pd['loc'] = pd['target']
+            if self.config.rapid_review and self.elapsed >= self.next_rapid-1e-9:
+                self.next_rapid += self.config.rapid_interval
+                waiting = sum(not j.completed and not j.expired and j.total_samples > 0 for j in self.jobs.values())
+                if waiting < self.config.offer_limit and self.time_left > 1e-9:
+                    job = self._new_job(committed=False)
+                    job.offer_expires = self.elapsed+self.config.rapid_lifetime
+                    self._job_queue.append(job)
+                    self._event('rapid_offer', job_id=job.job_id)
+            for job in list(self._job_queue):
+                if not job.committed and self.elapsed >= job.offer_expires:
+                    self._job_queue.remove(job)
+                    job.expired = True
+            if self.time_left > 1e-9:
+                self._maybe_accept_jobs()
+
+    def summary(self):
+        return dict(rules_version=RULES_VERSION, config_hash=self.config.fingerprint,
+                    reputation=self.reputation, net_reputation=self.reputation-self.starting_reputation,
+                    rep_earned=self.rep_earned, penalties=self.penalties,
+                    time_left=self.time_left, samples_done=sum(j.done for j in self.jobs.values()),
+                    samples_lost=sum(j.lost_samples for j in self.jobs.values()),
+                    proposals_completed=sum(j.completed for j in self.jobs.values()),
+                    proposals_full=sum(j.completed and j.done == j.original_samples for j in self.jobs.values()),
+                    proposals_partial=sum(0 < j.done < j.original_samples for j in self.jobs.values()),
+                    proposals_failed=sum(j.committed and j.done == 0 for j in self.jobs.values()),
+                    **self.metrics)
 
     def _time_to_next_event(self) -> float:
         """Shortest time until anything changes at the current location."""
@@ -469,9 +581,11 @@ class FacilityEnv(gym.Env):
             candidates.append(max(rem, 0.01))
 
         for job in self.jobs.values():
-            if job.unstarted > 0 and not job.npc_gone and job.npc_slot >= 0:
+            if not job.completed and not job.npc_gone and job.npc_slot >= 0:
                 candidates.append(max(job.leave_ms / 1000.0, 0.01))
 
+        if self.postdocs or self.config.rapid_review:
+            candidates.append(self.config.quantum)
         return min(candidates)
 
     # ── Interactions ──────────────────────────────────────────────────────────
@@ -500,8 +614,6 @@ class FacilityEnv(gym.Env):
                     job_id=ps.job_id, stage="prepped",
                     lab_type=lab, bl_idx=job.bl_idx,
                 ))
-                # Shaping: reward for advancing the pipeline (prep → hutch stage)
-                self._step_reward += 0.2 * job.rep / max(1, job.total_samples)
             slots.remove(ps)
 
         # Deposit raw samples of matching lab type
@@ -510,7 +622,7 @@ class FacilityEnv(gym.Env):
                 break
             job = self.jobs.get(item.job_id)
             dur = (job.prep_durs.pop(0) if job and job.prep_durs
-                   else float(self.rng.uniform(DUR_PREP_MIN, DUR_PREP_MAX)) * self.prep_speed)
+                   else self.config.prep_min * self.config.prep_speeds[0 if lab == 'wet' else 1])
             self.held.remove(item)
             slots.append(PrepSlot(job_id=item.job_id, remaining=dur, total=dur))
 
@@ -531,7 +643,8 @@ class FacilityEnv(gym.Env):
             if item.stage == "prepped" and item.bl_idx == bl:
                 job = self.jobs.get(item.job_id)
                 dur = (job.setup_durs.pop(0) if job and job.setup_durs
-                       else float(self.rng.uniform(DUR_SETUP_MIN, DUR_SETUP_MAX)))
+                       else self.config.setup_min)
+                self.exp_setup_job = item.job_id
                 self.exp_setup_bl   = bl
                 self.exp_setup_prog = 0.0
                 self.exp_setup_dur  = dur
@@ -544,40 +657,36 @@ class FacilityEnv(gym.Env):
 
         # Move the matching prepped item into a measurement slot
         for item in list(self.held):
-            if item.stage == "prepped" and item.bl_idx == bl:
+            if item.stage == "prepped" and item.bl_idx == bl and item.job_id == self.exp_setup_job:
                 job = self.jobs.get(item.job_id)
+                self.exp_setup_job = None
                 dur = (job.meas_durs.pop(0) if job and job.meas_durs
-                       else float(self.rng.uniform(DUR_MEAS_MIN, DUR_MEAS_MAX)) * self.meas_speed)
+                       else self.config.meas_min * self.config.meas_speeds[bl])
                 self.held.remove(item)
                 self.meas_slots.append(MeasSlot(
                     job_id=item.job_id, bl_idx=bl,
                     remaining=dur, total=dur, started=False,
                 ))
-                # Shaping: reward for completing exp setup
-                if job:
-                    self._step_reward += 0.2 * job.rep / max(1, job.total_samples)
                 return
 
     def _interact_ctrl(self, loc: str):
         bl = int(loc[2])
 
-        # Collect completed measurements
         for ms in [m for m in self.meas_slots if m.bl_idx == bl and m.ready]:
-            self.meas_slots.remove(ms)
-            job = self.jobs.get(ms.job_id)
-            if job and not job.completed:
-                job.done += 1
-                # Per-sample reward so PPO gets a dense signal
-                sample_rep = job.rep / job.total_samples
-                self._step_reward += sample_rep
-                self.reputation   += int(sample_rep)
-                if job.done >= job.total_samples:
-                    job.completed = True
+            self._collect_result(ms)
 
         # Start any deposited-but-not-yet-started measurements
         for ms in self.meas_slots:
             if ms.bl_idx == bl and not ms.started:
                 ms.started = True
+
+    def _collect_result(self, ms):
+        self.meas_slots.remove(ms)
+        job = self.jobs.get(ms.job_id)
+        if job and not job.completed:
+            job.done += 1
+            self._event('sample_completed', job_id=job.job_id)
+            self._finish_job(job)
 
     def _interact_npc(self, loc: str):
         slot = int(loc[4])
@@ -589,35 +698,31 @@ class FacilityEnv(gym.Env):
                         lab_type=job.lab_type, bl_idx=job.bl_idx,
                     ))
                     job.unstarted -= 1
-                    # Shaping: reward for starting the pipeline (NPC → prep stage)
-                    self._step_reward += 0.2 * job.rep / max(1, job.total_samples)
-                    if job.unstarted == 0:
-                        # NPC has given all samples — free the slot
-                        self._npc_slots_used.discard(slot)
+
                 break
 
     # ── NPC departure (game.js:userNpcLeaves) ────────────────────────────────
 
-    def _npc_leaves(self, job: Job):
-        lost        = job.unstarted
-        original    = job.total_samples
-        job.unstarted = 0
-        job.npc_gone  = True
-
-        held_lost = sum(1 for h in self.held if h.job_id == job.job_id)
+    def _npc_leaves(self, job):
+        if job.npc_gone or job.completed:
+            return
+        held_lost = sum(h.job_id == job.job_id for h in self.held)
         self.held = [h for h in self.held if h.job_id != job.job_id]
-
-        total_lost = lost + held_lost
-        job.total_samples = original - total_lost
-
-        if total_lost > 0 and original > 0:
-            penalty = max(1, round(total_lost / original * job.rep * NPC_LEAVE_FACTOR))
-            penalty = min(penalty, self.reputation)
-            self._step_reward -= penalty
-            self.reputation   -= penalty
-
-        self._npc_slots_used.discard(job.npc_slot)
-        job.npc_slot = -1
+        lost = job.unstarted + held_lost
+        job.unstarted = 0
+        job.npc_gone = True
+        job.lost_samples += lost
+        job.total_samples -= lost
+        if self.exp_setup_job == job.job_id:
+            self.exp_setup_job = None
+            self.exp_setup_bl = -1
+            self.exp_setup_prog = 0.0
+        if lost:
+            penalty = max(1, int(lost/job.original_samples*job.rep*self.config.departure_loss_fraction+0.5))
+            self._lose_rep(penalty, job, 'npc_departure')
+        self._release_slot(job)
+        self._event('npc_departed', job_id=job.job_id, samples_lost=lost)
+        self._finish_job(job)
 
     # ── Observation ───────────────────────────────────────────────────────────
 
@@ -625,7 +730,7 @@ class FacilityEnv(gym.Env):
         obs: list[float] = []
 
         # Time remaining (normalised 0–1)
-        obs.append(self.time_left / CYCLE_SEC)
+        obs.append(self.time_left / self.config.cycle_seconds)
 
         # Current location one-hot
         loc_oh = [0.0] * N_LOCS
@@ -706,13 +811,24 @@ class FacilityEnv(gym.Env):
             else:
                 obs += [0.0, 0.0, 0.0, 0.0, 0.0]
 
+        if not self.legacy_observation:
+            for si in range(5):
+                j = by_slot.get(si)
+                obs.extend(([j.rep/100, j.original_samples/10, j.done/max(1,j.original_samples)]
+                            + [float(j.bl_idx == b) for b in range(4)]
+                            + [j.leave_ms/1000/self.config.cycle_seconds]) if j else [0.0]*8)
+            obs.extend([len(self._job_queue)/10, self.config.ring_stability/100,
+                        float(self.beam_start <= self.elapsed < self.beam_end),
+                        len(self.postdocs)/max(1,self.config.max_postdocs),
+                        self.config.prep_speeds[0], self.config.prep_speeds[1],
+                        self.reputation/1000, self.config.year/20])
         return np.clip(np.array(obs, dtype=np.float32), 0.0, 1.0)
 
-    # ── Heuristic baseline (mirrors the JS bot's priority queue) ─────────────
+    # ── Heuristic baseline (inspired by the JS bot's priority queue) ─────────────
 
     def heuristic_action(self) -> int:
         """
-        Rule-based action matching bot.js _decide priority order.
+        Rule-based routing inspired by bot.js; admission and staff are modeled separately.
         Use this as a baseline to evaluate whether RL has improved.
         """
         # 1. Held exp_setup_done → already handled (no separate stage here;

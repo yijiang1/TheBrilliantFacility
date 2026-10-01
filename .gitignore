@@ -14,6 +14,12 @@ GameManager.html
 .sync_cursor
 tbf_stats.db
 
+# Python balance experiments and versioned training runs
+__pycache__/
+*.pyc
+rl/runs/
+rl/reports/
+
 # Online co-op runtime and browser checks
 node_modules/
 playwright-report/

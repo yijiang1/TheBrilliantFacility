@@ -164,6 +164,22 @@ test('solo play still starts without a room', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('solo player can reopen mode selection and resume the same session', async ({ page }) => {
+  const errors=[]; page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('/'); await page.locator('#online-solo').click();
+  await page.evaluate(()=>game.scene.getScene('Tutorial')._startGame());
+  await page.waitForFunction(()=>game.scene.isActive('ProposalReview'));
+  await page.locator('#solo-menu').click();
+  await expect(page.locator('#online-entry')).toBeVisible();
+  await expect(page.locator('#online-solo')).toHaveText('Continue solo');
+  expect(await page.evaluate(()=>game.scene.getScene('ProposalReview').time.paused)).toBe(true);
+  await page.locator('#online-solo').click();
+  await expect(page.locator('#online-panel')).toBeHidden();
+  expect(await page.evaluate(()=>game.scene.isActive('ProposalReview'))).toBe(true);
+  expect(await page.evaluate(()=>game.scene.getScene('ProposalReview').time.paused)).toBe(false);
+  expect(errors).toEqual([]);
+});
+
 
 test('leaving a guest session restores solo input and preserves the solo save', async ({browser}) => {
   const p=await pair(browser), {guest}=p;
