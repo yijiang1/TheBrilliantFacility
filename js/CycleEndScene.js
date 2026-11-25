@@ -33,9 +33,9 @@ class CycleEndScene extends Phaser.Scene {
     const isYearEnd = d.cycleInYear === 3;
     if (isYearEnd) {
       // Award new yearly funding, cap carryover from last year
-      const carryover = Math.min(d.funding || 0, 100000);
-      const newFunding = 200000 + Math.floor((d.reputation||0) * 500);
-      const postdocCost = (this.upgrades.postdocs || 0) * 100000;
+      const carryover = Math.min(d.funding || 0, RULES.economy.carryoverCap);
+      const newFunding = RULES.economy.grantBase + Math.floor((d.reputation||0) * RULES.economy.grantPerRep);
+      const postdocCost = (this.upgrades.postdocs || 0) * RULES.economy.postdocSalary;
       this.funding = carryover + newFunding - postdocCost;
       const breakdown = `carryover: 💰${fmtK(carryover)}${postdocCost > 0 ? `  postdocs: -💰${fmtK(postdocCost)}` : ''}`;
       this.newFundingMsg = `New year grant: 💰${fmtK(newFunding)}\n${breakdown}`;
@@ -127,7 +127,7 @@ class CycleEndScene extends Phaser.Scene {
     this.add.text(LX+32, AY+20, 'Required before continuing', {font:'bold 10px Arial',color:'#b05b35'});
 
     this.actionChosen = false;
-    const repGain = Math.min(30, 10 + (d.yearSamples || 0) * 2);
+    const repGain = Math.min(RULES.paper.max, RULES.paper.base + (d.yearSamples || 0) * RULES.paper.perSample);
     const hasPostdoc = (this.upgrades.postdocs || 0) > 0;
     const pdLevels = this.upgrades.postdocLevels || [];
     const pdNames  = this.upgrades.postdocNames  || [];
@@ -288,7 +288,7 @@ class CycleEndScene extends Phaser.Scene {
           const pct = Math.round((1 - this.upgrades.prepSpeedMap[lab.pk]) * 100);
           return `Prep time −5% per purchase\n${pct}% faster (max 50%)`;
         },
-        cost: 10000,
+        cost: RULES.upgrades.prepSpeed.cost,
         oncePerCycle: true,
         canBuy: () => this.upgrades.prepSpeedMap[lab.pk] > 0.51 && !this.boughtThisCycle.has(`prepSpeed_${lab.pk}`),
         apply:  () => { this.upgrades.prepSpeedMap[lab.pk] = Math.max(0.50, this.upgrades.prepSpeedMap[lab.pk] - 0.05); },
@@ -301,7 +301,7 @@ class CycleEndScene extends Phaser.Scene {
           const pct = Math.round((1 - this.upgrades.measSpeedMap[bl.idx]) * 100);
           return `Measurement −5% per purchase\n${pct}% faster (max 50%)`;
         },
-        cost: 50000,
+        cost: RULES.upgrades.measSpeed.cost,
         oncePerCycle: true,
         canBuy: () => this.upgrades.measSpeedMap[bl.idx] > 0.51 && !this.boughtThisCycle.has(`measSpeed_${bl.idx}`),
         apply:  () => { this.upgrades.measSpeedMap[bl.idx] = Math.max(0.50, this.upgrades.measSpeedMap[bl.idx] - 0.05); },
@@ -315,7 +315,7 @@ class CycleEndScene extends Phaser.Scene {
             ? `${nextPostdocName} joins\nTeam: ${names.join(', ')}`
             : `${nextPostdocName} joins your lab`;
         },
-        ownedLabel:'✓ OWNED', cost:100000,
+        ownedLabel:'✓ OWNED', cost:RULES.upgrades.hire.cost,
         oncePerCycle: true,
         canBuy:()=>!this.boughtThisCycle.has('extraJob'),
         apply:()=>{
@@ -323,14 +323,14 @@ class CycleEndScene extends Phaser.Scene {
           (this.upgrades.postdocNames  = this.upgrades.postdocNames  || []).push(nextPostdocName);
           (this.upgrades.postdocLevels = this.upgrades.postdocLevels || []).push(1);
         } },
-      { key:'prepCap',   label:'Prep Room × 2',   desc:'Handle 2 samples at once',     cost:150000,
-        show:()=>d.year > 1,
+      { key:'prepCap',   label:'Prep Room × 2',   desc:'Handle 2 samples at once',     cost:RULES.upgrades.prepCap.cost,
+        show:()=>d.year >= RULES.upgrades.prepCap.fromYear,
         canBuy:()=>this.upgrades.prepCap<2,       apply:()=>this.upgrades.prepCap=2 },
-      { key:'ringMaint', label:'Ring Maintenance', desc:'Restores +5% ring stability/cycle\n(net +3% after −2 decay)', cost:80000,
-        show:()=>d.year > 1,
+      { key:'ringMaint', label:'Ring Maintenance', desc:`Restores +${RULES.ring.maintBonus}% ring stability/cycle\n(net +${RULES.ring.maintBonus - RULES.ring.decayPerCycle}% after −${RULES.ring.decayPerCycle} decay)`, cost:RULES.upgrades.ringMaint.cost,
+        show:()=>d.year >= RULES.upgrades.ringMaint.fromYear,
         canBuy:()=>!this.upgrades.ringMaint,      apply:()=>this.upgrades.ringMaint=true },
-      { key:'npcPositioning', label:'User Coordination', desc:'Users wait halfway between their\nprep lab and beamline — less walking', cost:100000,
-        show:()=>d.year > 1,
+      { key:'npcPositioning', label:'User Coordination', desc:'Users wait halfway between their\nprep lab and beamline — less walking', cost:RULES.upgrades.npcPositioning.cost,
+        show:()=>d.year >= RULES.upgrades.npcPositioning.fromYear,
         canBuy:()=>!this.upgrades.npcPositioning, apply:()=>this.upgrades.npcPositioning=true },
     ];
 

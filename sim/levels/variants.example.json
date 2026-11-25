@@ -1,0 +1,7 @@
+{
+  "cheaper_measurement_upgrades": { "rules": { "upgrades": { "measSpeed": { "cost": 25000 } } } },
+  "bigger_grants": { "rules": { "economy": { "grantPerRep": 700 } } },
+  "shorter_scans": { "constants": { "DUR_MEAS_MAX": 6.0 } },
+  "four_minute_cycles": { "constants": { "CYCLE_SEC": 240 } },
+  "capped_staff": { "strategy": { "preset": "bot", "maxPostdocs": 2 } }
+}
