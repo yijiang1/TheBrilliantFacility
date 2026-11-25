@@ -35,6 +35,25 @@ const MAX_SLOTS          = 5;   // max slots rendered in UI
 const PROPOSAL_LIFE = 40;
 const MAX_HELD      = 3;   // player inventory size
 
+// ── Tunable rules ───────────────────────────────────────────────────────────
+// Economy, ring and shop numbers live here so a level or era can change them
+// as data. The headless simulator (sim/) overrides these per level file.
+const RULES = {
+  start:     { funding: 200000, reputation: 0, ringBase: 98 },
+  economy:   { grantBase: 200000, grantPerRep: 500, carryoverCap: 100000, postdocSalary: 100000 },
+  ring:      { decayPerCycle: 2, floor: 30, max: 100, maintBonus: 5 },
+  penalties: { unfinishedCommitted: 8 },               // rep lost per committed proposal with 0 samples
+  paper:     { base: 10, perSample: 2, max: 30 },     // Write Paper: min(max, base + samples × perSample)
+  upgrades: {
+    prepSpeed:      { cost: 10000 },
+    measSpeed:      { cost: 50000 },
+    hire:           { cost: 100000 },
+    prepCap:        { cost: 150000, fromYear: 2 },
+    ringMaint:      { cost: 80000,  fromYear: 2 },
+    npcPositioning: { cost: 100000, fromYear: 2 },
+  },
+};
+
 // ── Telemetry — paste a Discord webhook URL here to receive cycle stats ──
 const TELEMETRY_WEBHOOK = 'https://discord.com/api/webhooks/1493440793720127520/wdWz5JBTrfG4dWlZV2qXo34cemGJ7feEYVIm7Li79Drrt-Raq-Gcym6YogBhnpkMqtZy';
 

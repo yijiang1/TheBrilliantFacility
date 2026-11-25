@@ -1,0 +1,9 @@
+{
+  "name": "baseline",
+  "description": "A brand-new game with the rules exactly as they are in js/. Other levels extend this file.",
+  "start": {},
+  "rules": {},
+  "constants": {},
+  "generations": {},
+  "strategy": "bot"
+}

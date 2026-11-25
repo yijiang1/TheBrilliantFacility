@@ -1,0 +1,19 @@
+{
+  "extends": "baseline.json",
+  "name": "gen2-start",
+  "description": "Start of year 4, when the 2nd-generation source arrives: an established facility with some upgrades and one trained postdoc.",
+  "start": {
+    "year": 4,
+    "cycleInYear": 1,
+    "reputation": 400,
+    "funding": 300000,
+    "ringBase": 80,
+    "upgrades": {
+      "postdocs": 1,
+      "postdocLevels": [2],
+      "prepSpeedMap": { "prep": 0.9, "prep2": 1.0 },
+      "measSpeedMap": [0.85, 1.0, 1.0, 1.0],
+      "prepCap": 2
+    }
+  }
+}

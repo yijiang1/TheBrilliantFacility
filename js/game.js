@@ -300,7 +300,7 @@ class TutorialScene extends Phaser.Scene {
   _startGame() {
     clearSave();
     this.scene.start('ProposalReview', {
-      cycle:1, cycleInYear:1, year:1, reputation:0, ringBase:98, funding:200000,
+      cycle:1, cycleInYear:1, year:1, reputation:RULES.start.reputation, ringBase:RULES.start.ringBase, funding:RULES.start.funding,
       upgrades:{prepCap:1, measCap:1, prepSpeedMap:{prep:1.0,prep2:1.0}, measSpeedMap:[1.0,1.0,1.0,1.0], extraJobSlots:0, postdocs:0, postdocLevels:[], postdocNames:[], ringMaint:false},
     });
   }
@@ -2467,7 +2467,7 @@ class GameScene extends Phaser.Scene {
       ...this.active.filter(j => j.committed && j.done === 0),
       ...(this.commitQueue || []),
     ];
-    const penalties = allCommitted.map(j => ({ name: j.name, penalty: -8 }));
+    const penalties = allCommitted.map(j => ({ name: j.name, penalty: -RULES.penalties.unfinishedCommitted }));
     for (const p of penalties) this.reputation = Math.max(0, this.reputation + p.penalty);
 
     const proposalsPartial = this.active.filter(j => j.done > 0 && j.done < j.totalSamples).length;
@@ -2487,7 +2487,7 @@ class GameScene extends Phaser.Scene {
         year: this.year, cycle: this.cycle, cycleInYear: this.cycleInYear,
         name: j.name, tech: j.tech, labType: j.labType || 'dry',
         samplesRequired: j.totalSamples, samplesDone: 0,
-        repEarned: 0, penalty: -8, outcome: 'failed',
+        repEarned: 0, penalty: -RULES.penalties.unfinishedCommitted, outcome: 'failed',
       });
     }
 
@@ -2495,7 +2495,7 @@ class GameScene extends Phaser.Scene {
       cycle:this.cycle, cycleInYear:this.cycleInYear, year:this.year,
       yearSamples:this.yearSamples,
       reputation:this.reputation,
-      ringBase:Math.min(100,Math.max(30,this.carryRing - 2 + (this.upgrades.ringMaint ? 5 : 0))),
+      ringBase:Math.min(RULES.ring.max,Math.max(RULES.ring.floor,this.carryRing - RULES.ring.decayPerCycle + (this.upgrades.ringMaint ? RULES.ring.maintBonus : 0))),
       funding: this.funding,
       upgrades: this.upgrades,
       beamlineTechs: this.beamlineTechs,
@@ -2564,8 +2564,8 @@ class GameScene extends Phaser.Scene {
     this.year += 1;
     this.cycleInYear = 1;
     // Simulate the annual grant for the new year
-    const grant = 200000 + Math.floor(this.reputation * 500);
-    this.funding = Math.min(this.funding, 100000) + grant;
+    const grant = RULES.economy.grantBase + Math.floor(this.reputation * RULES.economy.grantPerRep);
+    this.funding = Math.min(this.funding, RULES.economy.carryoverCap) + grant;
     this.flash(`DEV: jumped to Year ${this.year}  💰+${fmtK(grant)} grant`, '#ff8800');
   }
 }

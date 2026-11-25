@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server/index.js",
     "test": "node --test tests/*.test.js",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "sim": "node sim/run.js",
+    "test:sim": "node --test tests/sim.test.js"
   },
   "engines": { "node": ">=22" },
   "dependencies": { "phaser": "3.60.0", "ws": "^8.18.3" },

@@ -252,7 +252,7 @@
       if (startHost && this.role === 'host') {
         this.game.scene.getScenes(true).forEach(s => this.game.scene.stop(s.scene.key));
         this.game.scene.start('ProposalReview', { cycle: 1, cycleInYear: 1, year: 1,
-          reputation: 0, ringBase: 98, funding: 200000,
+          reputation: RULES.start.reputation, ringBase: RULES.start.ringBase, funding: RULES.start.funding,
           upgrades: { prepCap: 1, measCap: 1, prepSpeedMap: { prep: 1, prep2: 1 },
             measSpeedMap: [1, 1, 1, 1], extraJobSlots: 0, postdocs: 0, postdocLevels: [], postdocNames: [], ringMaint: false } });
       }

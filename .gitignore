@@ -24,3 +24,6 @@ rl/reports/
 node_modules/
 playwright-report/
 test-results/
+
+# Simulator reports
+sim/reports/

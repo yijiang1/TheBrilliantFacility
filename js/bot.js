@@ -453,7 +453,7 @@ class FacilityBot {
       'extraJob',                                              // +1 postdoc worker
       'prepCap',                                              // 2× prep throughput
       'npcPositioning',                                       // shorter travel
-      'measSpeed_bl0', 'measSpeed_bl1', 'measSpeed_bl2', 'measSpeed_bl3',
+      'measSpeed_0', 'measSpeed_1', 'measSpeed_2', 'measSpeed_3',  // shop keys are measSpeed_<blIdx>
       'prepSpeed_prep', 'prepSpeed_prep2',                    // cheap stacking bonuses
       'ringMaint',                                            // long-term stability
     ];
@@ -472,6 +472,9 @@ class FacilityBot {
 
   // Called by ProposalReviewScene.create() when the scene is ready.
   _onProposalReviewReady(cs) {
+    // Phaser reuses one CycleEndScene instance every cycle, so clear the
+    // double-fire guard here or the bot stalls at the second cycle end.
+    this._handledCycleScene = null;
     window.setTimeout(() => {
       if (!this.enabled) return;
       this._doSelectProposals(cs);
