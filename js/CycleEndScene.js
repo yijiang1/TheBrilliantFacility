@@ -29,6 +29,7 @@ class CycleEndScene extends Phaser.Scene {
       for (let i = 0; i < count; i++)
         this.upgrades.postdocNames.push(pickPostdocName(this.upgrades.postdocNames));
     }
+    this.upgrades.robots = Object.assign(emptyRobots(), this.upgrades.robots || {});
     // Calculate available funding
     const isYearEnd = d.cycleInYear === 3;
     if (isYearEnd) {
@@ -315,9 +316,9 @@ class CycleEndScene extends Phaser.Scene {
             ? `${nextPostdocName} joins\nTeam: ${names.join(', ')}`
             : `${nextPostdocName} joins your lab`;
         },
-        ownedLabel:'✓ OWNED', cost:RULES.upgrades.hire.cost,
+        ownedLabel:'✓ TEAM FULL', cost:RULES.upgrades.hire.cost,
         oncePerCycle: true,
-        canBuy:()=>!this.boughtThisCycle.has('extraJob'),
+        canBuy:()=>!this.boughtThisCycle.has('extraJob') && (this.upgrades.postdocs || 0) < RULES.upgrades.hireMax,
         apply:()=>{
           this.upgrades.postdocs = (this.upgrades.postdocs || 0) + 1;
           (this.upgrades.postdocNames  = this.upgrades.postdocNames  || []).push(nextPostdocName);
@@ -329,15 +330,10 @@ class CycleEndScene extends Phaser.Scene {
       { key:'ringMaint', label:'Ring Maintenance', desc:`Restores +${RULES.ring.maintBonus}% ring stability/cycle\n(net +${RULES.ring.maintBonus - RULES.ring.decayPerCycle}% after −${RULES.ring.decayPerCycle} decay)`, cost:RULES.upgrades.ringMaint.cost,
         show:()=>d.year >= RULES.upgrades.ringMaint.fromYear,
         canBuy:()=>!this.upgrades.ringMaint,      apply:()=>this.upgrades.ringMaint=true },
-      { key:'npcPositioning', label:'User Coordination', desc:'Users wait halfway between their\nprep lab and beamline — less walking', cost:RULES.upgrades.npcPositioning.cost,
-        show:()=>d.year >= RULES.upgrades.npcPositioning.fromYear,
-        canBuy:()=>!this.upgrades.npcPositioning, apply:()=>this.upgrades.npcPositioning=true },
-      { key:'predictiveMaint', label:'Predictive Maintenance', desc:'Warns of detector motor slips when\na sample is loaded, so you can\nrealign before the scan jams', cost:RULES.upgrades.predictiveMaint.cost,
-        show:()=>d.year >= RULES.upgrades.predictiveMaint.fromYear,
-        canBuy:()=>!this.upgrades.predictiveMaint, apply:()=>this.upgrades.predictiveMaint=true },
       { key:'cryoActivator', label:'Cryo Auto-Activator', desc:'Keeps prepped wet samples cold —\nthey no longer degrade', cost:RULES.upgrades.cryoActivator.cost,
         show:()=>d.year >= RULES.upgrades.cryoActivator.fromYear,
         canBuy:()=>!this.upgrades.cryoActivator, apply:()=>this.upgrades.cryoActivator=true },
+      ...this._robotCards(d),
     ];
 
     const visibleUpgrades = UPGRADES.filter(u => !u.show || u.show());
@@ -360,7 +356,27 @@ class CycleEndScene extends Phaser.Scene {
       cardOffsetY = 74;
     }
 
-    visibleUpgrades.forEach((u, i) => {
+    // Lab / Robots tabs — every card stays in upgButtons (the bot buys by key), only one tab shows.
+    const hasRobotTab = visibleUpgrades.some(u => u.tab === 'robots');
+    this.shopTab = 'lab';
+    this.tabBtns = [];
+    if (hasRobotTab) {
+      [['lab', '🧪 LAB'], ['robots', '🤖 ROBOTS']].forEach(([tab, name], ti) => {
+        const tx = RX + ti * 132, ty = SY + cardOffsetY;
+        const tbg = this.add.rectangle(tx, ty, 124, 24, 0xffffff).setOrigin(0, 0).setStrokeStyle(1, 0x9ab4c4);
+        const ttx = this.add.text(tx + 62, ty + 12, name, {font:'bold 12px Arial', color:'#1a5a8a'}).setOrigin(0.5);
+        tbg.setInteractive({useHandCursor:true});
+        tbg.on('pointerdown', () => this.showShopTab(tab));
+        this.tabBtns.push({tab, tbg, ttx, name});
+      });
+      this.robotTabNote = this.add.text(RX + 270, SY + cardOffsetY + 12, '', {font:'11px Arial', color:'#4a7a6a'}).setOrigin(0, 0.5);
+      cardOffsetY += 32;
+    }
+    const tabIndex = { lab: 0, robots: 0 };
+
+    visibleUpgrades.forEach((u) => {
+      u.tab = u.tab || 'lab';
+      const i = tabIndex[u.tab]++;
       const col = i % 2;
       const row = Math.floor(i / 2);
       const ux  = RX + col * (CARD_W + COL_GAP);
@@ -405,7 +421,10 @@ class CycleEndScene extends Phaser.Scene {
       bg.on('pointerout',  () => this.refreshUpgButtons());
       this.upgButtons.push({u, bg, lbl, dsc, cst, btn, owned});
     });
+    this.showShopTab('lab');
     this.refreshUpgButtons();
+    // First fully automated cycle: celebrate once (later cycles keep running automated).
+    if (d.victoryLap && !this.upgrades.robots.finaleSeen) { this.upgrades.robots.finaleSeen = true; this._showFinale(); }
 
     // Auto-save cycle stats to localStorage + remote telemetry
     const _statRecord = {
@@ -501,8 +520,99 @@ class CycleEndScene extends Phaser.Scene {
     return true;
   }
 
+  showShopTab(tab) {
+    this.shopTab = tab;
+    for (const e of this.upgButtons) {
+      const vis = (e.u.tab || 'lab') === tab;
+      for (const o of [e.bg, e.lbl, e.dsc, e.cst, e.btn, e.owned]) o.setVisible(vis);
+      if (e.bg.input) e.bg.input.enabled = vis;
+      if (e.btn.input) e.btn.input.enabled = vis;
+    }
+    for (const t of this.tabBtns || []) {
+      const on = t.tab === tab;
+      t.tbg.setFillStyle(on ? 0x1a5a8a : 0xffffff);
+      t.ttx.setStyle({color: on ? '#ffffff' : '#1a5a8a'});
+    }
+  }
+
+  // Robots tab: the automation path. Numbers live in RULES.robots; behaviour in robots.js.
+  _robotCards(d) {
+    const R = RULES.robots;
+    const rb = () => this.upgrades.robots;
+    const nextCycle = d.cycle + 1;
+    const show = cfg => () => nextCycle >= cfg.fromCycle;
+    const LAB = { prep: 'Wet Lab', prep2: 'Dry Lab' };
+    const nextLab  = () => ['prep', 'prep2'].find(pk => !rb().prep[pk]);
+    const nextBL   = arr => arr.indexOf(false);
+    const blName   = i => `BL-${i+1}${d.beamlineTechs?.[i] ? ` (${d.beamlineTechs[i]})` : ''}`;
+    const ownedOf  = (n, max) => `Owned ${n}/${max}`;
+    return [
+      { key:'prepBot', tab:'robots', label:'Prep Bot', cost:R.prepBot.cost, show:show(R.prepBot), ownedLabel:'✓ ALL OWNED',
+        desc:()=>{ const pk = nextLab(); const n = (rb().prep.prep?1:0)+(rb().prep.prep2?1:0);
+          return `${pk ? `Runs prep at the ${LAB[pk]} with\nnobody standing there` : 'Both labs prep on their own'}\n${ownedOf(n, R.prepBot.max)}`; },
+        canBuy:()=>!!nextLab(), apply:()=>{ rb().prep[nextLab()] = true; } },
+      { key:'consoleBot', tab:'robots', label:'Console Bot', cost:R.consoleBot.cost, show:show(R.consoleBot), ownedLabel:'✓ ALL OWNED',
+        desc:()=>{ const i = nextBL(rb().console);
+          return `${i >= 0 ? `Starts and collects scans at\n${blName(i)}` : 'Every control room is staffed'}\n${ownedOf(rb().console.filter(Boolean).length, R.consoleBot.max)}`; },
+        canBuy:()=>nextBL(rb().console) >= 0, apply:()=>{ rb().console[nextBL(rb().console)] = true; } },
+      { key:'hutchBot', tab:'robots', label:'Hutch Bot', cost:R.hutchBot.cost, show:show(R.hutchBot), ownedLabel:'✓ ALL OWNED',
+        desc:()=>{ const i = nextBL(rb().hutch);
+          return `${i >= 0 ? `Sets up and loads ${blName(i)},\nrealigns motor slips` : 'Every hutch is staffed'}\n${ownedOf(rb().hutch.filter(Boolean).length, R.hutchBot.max)}`; },
+        canBuy:()=>nextBL(rb().hutch) >= 0, apply:()=>{ rb().hutch[nextBL(rb().hutch)] = true; } },
+      { key:'courierBot', tab:'robots', label:'Courier Bot', cost:R.courierBot.cost, show:show(R.courierBot), ownedLabel:'✓ ALL OWNED',
+        desc:()=>`Carries prepped samples from the\nlabs to Hutch Bots\n${ownedOf(rb().courier, R.courierBot.max)}`,
+        canBuy:()=>rb().courier < R.courierBot.max, apply:()=>{ rb().courier++; } },
+      { key:'receptionBot', tab:'robots', label:'Reception Bot', cost:R.receptionBot.cost, show:show(R.receptionBot), ownedLabel:'✓ ALL OWNED',
+        desc:()=>`Collects samples from users and\nstarts them in a lab\n${ownedOf(rb().reception, R.receptionBot.max)}`,
+        canBuy:()=>rb().reception < R.receptionBot.max, apply:()=>{ rb().reception++; } },
+      { key:'sampleChanger', tab:'robots', label:'Sample Changer', cost:R.sampleChanger.cost, show:show(R.sampleChanger),
+        desc:'Every beamline holds 2 samples\nat once (optional)',
+        canBuy:()=>(this.upgrades.measCap || 1) < 2, apply:()=>{ this.upgrades.measCap = 2; } },
+      { key:'facilityOS', tab:'robots', label:'Facility OS', cost:R.facilityOS.cost, show:()=>nextCycle >= osStageCycle(0),
+        oncePerCycle: true,
+        desc:()=>{ const p = robotProgress(rb()); const n = rb().osStages || 0, N = R.facilityOS.stages;
+          if (rb().os) return 'The facility runs itself';
+          if (!p.complete) return `Accepts proposals and brings in users.\nNeeds every robot: ${p.owned}/${p.needed}`;
+          return `Install stage ${n+1}/${N}, one per shop.\n${n+1 === N ? 'Last stage: next cycle is the victory lap!' : 'Accepts proposals and brings in users.'}`; },
+        lockedText:()=>{ if (rb().os) return null;
+          if (!robotProgress(rb()).complete) return '🔒 NEEDS ALL ROBOTS';
+          const i = rb().osStages || 0;
+          return nextCycle < osStageCycle(i) ? `🔒 STAGE ${i+1} AFTER C${osStageCycle(i)-1}` : null; },
+        canBuy:()=>!rb().os && robotProgress(rb()).complete && !this.boughtThisCycle.has('facilityOS')
+          && nextCycle >= osStageCycle(rb().osStages || 0),
+        apply:()=>{ rb().osStages = (rb().osStages || 0) + 1; if (rb().osStages >= R.facilityOS.stages) rb().os = true; } },
+    ];
+  }
+
+  // The cycle that just ended was the victory lap: the facility ran itself.
+  _showFinale() {
+    const d = this.d;
+    const objs = [];
+    objs.push(this.add.rectangle(0, 0, GW, GH, 0x061a14, 0.82).setOrigin(0, 0).setDepth(50).setInteractive());
+    objs.push(this.add.rectangle(GW/2, GH/2, 560, 250, 0xffffff).setStrokeStyle(3, 0x34b9ad).setDepth(51));
+    objs.push(this.add.text(GW/2, GH/2 - 88, '🏆 FULLY AUTOMATED', {font:'bold 28px Arial', color:'#0d5a4a'}).setOrigin(0.5).setDepth(52));
+    objs.push(this.add.text(GW/2, GH/2 - 40,
+      `Year ${d.year}, cycle ${d.cycleInYear}: the robots ran every task.\nThe Brilliant Facility runs itself. ⭐ ${d.reputation} reputation.`,
+      {font:'15px Arial', color:'#244a5a', align:'center'}).setOrigin(0.5).setDepth(52));
+    const mkBtn = (x, label, color, fn) => {
+      const b = this.add.rectangle(x, GH/2 + 60, 210, 44, color).setDepth(52).setInteractive({useHandCursor:true});
+      const t = this.add.text(x, GH/2 + 60, label, {font:'bold 14px Arial', color:'#ffffff'}).setOrigin(0.5).setDepth(53);
+      b.on('pointerdown', fn);
+      objs.push(b, t);
+    };
+    mkBtn(GW/2 - 115, 'KEEP RUNNING  ▶', 0x198f82, () => objs.forEach(o => o.destroy()));
+    mkBtn(GW/2 + 115, 'NEW GAME', 0x5278bb, () => { clearSave(); this.scene.start('Tutorial'); });
+    this.finaleObjs = objs;
+  }
+
   refreshUpgButtons(){
     const remaining = this.funding - this.spent;
+    if (this.robotTabNote) {
+      const p = robotProgress(this.upgrades.robots);
+      this.robotTabNote.setText(this.upgrades.robots.os ? 'Facility OS online'
+        : `Robots: ${p.owned}/${p.needed}  ·  Facility OS: ${this.upgrades.robots.osStages || 0}/${RULES.robots.facilityOS.stages}`);
+    }
+    this.upgButtons.forEach(({u,dsc}) => { if (u.tab === 'robots') dsc.setText(typeof u.desc === 'function' ? u.desc() : u.desc); });
     this.upgButtons.forEach(({u,bg,btn,owned})=>{
       const available = u.canBuy();
       const affordable = available && remaining >= u.cost;
@@ -511,7 +621,7 @@ class CycleEndScene extends Phaser.Scene {
       if (!available) {
         btn.setAlpha(0);
         const boughtNow = u.oncePerCycle && this.boughtThisCycle.has(u.key);
-        owned.setText(boughtNow ? '✓ BOUGHT' : (u.ownedLabel ?? (typeof u.desc === 'function' ? '✗ MAX' : '✓ OWNED')))
+        owned.setText(boughtNow ? '✓ BOUGHT' : (u.lockedText?.() || u.ownedLabel || (typeof u.desc === 'function' ? '✗ MAX' : '✓ OWNED')))
           .setAlpha(1);
       } else {
         owned.setAlpha(0);

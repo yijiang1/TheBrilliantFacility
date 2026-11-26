@@ -439,6 +439,7 @@ class GameScene extends Phaser.Scene {
     this.buildActivePanel();
     this.buildPlayer();       // player AFTER stations so it renders on top
     this.buildPostdocs();     // postdocs after player (depth 9, under player depth 10)
+    this.buildRobots();       // robots.js — automation units bought in the shop
     this.buildProgressBar();  // progress bar AFTER player
     this.buildHUD();
     
@@ -459,6 +460,7 @@ class GameScene extends Phaser.Scene {
     if (!window.coop?.isGuest) {
       this.time.addEvent({delay:1000, callback:this.onTick,    callbackScope:this, loop:true});
       this.schedulePotentialBeamStop();
+      this.scheduleRobotFaults();
       this.scheduleSpawn(3000);
       // Seed one rapid-review proposal after a short delay
       this.time.delayedCall(20000, () => this.spawnProposal(), [], this);
@@ -1748,6 +1750,7 @@ class GameScene extends Phaser.Scene {
     for (const bl of this.beamlines) {
       const lock = this.stDefs[bl.lockKey];
       if(this.isPointInSt(lock, this.px, this.py)){
+        if (this.handToHutchBot(bl.idx)) return;
         const blTech = this.beamlineTechs[bl.idx];
         const prepIdx = this.held.findIndex(h => {
           if (h.stage !== 'prepped') return false;
@@ -1878,7 +1881,7 @@ class GameScene extends Phaser.Scene {
 
     // Prep slots: tick while player or postdoc is near; pause if neither
     for (const pk of this.prepKeys) {
-      const nearThis = hasAuto || this.anyPlayerIn(this.stDefs[pk])
+      const nearThis = hasAuto || this.anyPlayerIn(this.stDefs[pk]) || this.robotWorking('prepBot', pk)
         || this.postdocs.some(pd => this.isPointInSt(this.stDefs[pk], pd.x, pd.y));
       for (const s of this.prepSlotsFor[pk]) {
         if (!s.toStage && nearThis) {
@@ -1893,7 +1896,7 @@ class GameScene extends Phaser.Scene {
       for(const s of this.measSlots){
         if(!s.toStage && s.started && !s.jammed){
           const bl = this.beamlines[s.blIdx];
-          const playerNearMeas = hasAuto || this.anyPlayerIn(this.stDefs[bl.measKey])
+          const playerNearMeas = hasAuto || this.anyPlayerIn(this.stDefs[bl.measKey]) || this.robotWorking('consoleBot', s.blIdx)
             || this.postdocs.some(pd => this.isPointInSt(this.stDefs[bl.measKey], pd.x, pd.y));
           if(playerNearMeas) {
             s.remaining -= delta;
@@ -1925,6 +1928,7 @@ class GameScene extends Phaser.Scene {
 
     this.pCon.setPosition(this.px,this.py);
     this.updatePostdocs(delta);
+    this.updateRobots(delta);
 
     this.renderPlayer();
 
@@ -2083,13 +2087,13 @@ class GameScene extends Phaser.Scene {
       const pulse = Math.sin(this.time.now / 280) * 0.5 + 0.5; // 0..1
       const alpha = 0.12 + pulse * 0.28;                        // 0.12..0.40
       for (const s of this.measSlots) {
-        if (!s.jammed && !s.jamWarned) continue;
+        if (!s.jammed) continue;
         const geo = this.roomGeo.find(r => r.key === `exp_setup_${s.blIdx}`);
         if (!geo) continue;
         const { cx, cy, w, h, rad } = geo;
         const cos = Math.cos(rad), sin = Math.sin(rad);
         const c = [[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]].map(([x,y]) => ({ x: cx + x*cos - y*sin, y: cy + x*sin + y*cos }));
-        this.roomHighlightG.fillStyle(s.jammed ? 0xdd2211 : 0xdd8800, alpha + 0.1);
+        this.roomHighlightG.fillStyle(0xdd2211, alpha + 0.1);
         this.roomHighlightG.fillTriangle(c[0].x, c[0].y, c[1].x, c[1].y, c[2].x, c[2].y);
         this.roomHighlightG.fillTriangle(c[0].x, c[0].y, c[2].x, c[2].y, c[3].x, c[3].y);
       }
@@ -2251,6 +2255,8 @@ class GameScene extends Phaser.Scene {
 
   // Returns a context-sensitive prompt for what Space will do
   getPrompt() {
+    const _fr = this.faultedRobot?.();
+    if (_fr && Math.hypot(this.px - _fr.x, this.py - _fr.y) < 36) return 'Hold still — rebooting the robot...';
     // Near user with unstarted samples
     for(let i=0;i<MAX_SLOTS;i++){
       const j=this.active[i];
@@ -2284,8 +2290,12 @@ class GameScene extends Phaser.Scene {
       const lock=this.stDefs[bl.lockKey];
       if(this.isPointInSt(lock, this.px, this.py)){
         const blTech = this.beamlineTechs[bl.idx];
-        const _jam = this.measSlots.find(s => s.blIdx === bl.idx && (s.jammed || s.jamWarned));
-        if(_jam) return _jam.jammed ? 'Hold still — realigning the detector arm...' : 'Hold still — realigning the drifting motor...';
+        const _jam = this.measSlots.find(s => s.blIdx === bl.idx && s.jammed);
+        if(_jam && !this.robotWorking('hutchBot', bl.idx)) return 'Hold still — realigning the detector arm...';
+        if (this.robotWorking('hutchBot', bl.idx)) {
+          const _mine = this.held.some(h => h.stage === 'prepped' && this.active.find(a => a.id === h.jobId)?.tech === blTech);
+          return _mine ? `[Space] Hand sample to the BL-${bl.idx+1} Hutch Bot` : `BL-${bl.idx+1} Hutch Bot: ${blTech}`;
+        }
         const _occupied = this.measSlots.some(s => s.blIdx === bl.idx);
         if(_occupied) return `BL-${bl.idx+1} hutch occupied — wait for measurement to finish`;
         if(this.doingExpSetup && this.activeExpSetupIdx === bl.idx) return 'Hold still — setting up experiment...';
@@ -2440,6 +2450,7 @@ class GameScene extends Phaser.Scene {
 
   // ── Hazards (M2) — numbers live in RULES.hazards in js/data.js ──
   _hazardOn(name) {
+    if (this.victoryLap) return false;   // the robots handle everything on the victory lap
     const h = RULES.hazards[name];
     return !!h && h.enabled !== false && this.cycle >= (h.fromCycle || 1);
   }
@@ -2449,15 +2460,10 @@ class GameScene extends Phaser.Scene {
     if (!slot || !this._hazardOn('motorSlip') || Math.random() >= RULES.hazards.motorSlip.chance) return;
     slot.jamAt = Phaser.Math.FloatBetween(0.25, 0.75);   // fraction of the scan where the arm jams
     slot.realignMs = 0;
-    if (this.upgrades.predictiveMaint) {
-      slot.jamWarned = true;
-      this.flash(`⚠ BL-${slot.blIdx+1} detector motor drifting — stay in the hutch to realign it`, '#cc7700');
-    }
   }
 
   _jamMotor(s) {
     s.jammed = true;
-    s.jamWarned = false;
     s.jamLeftMs = RULES.hazards.motorSlip.timeoutSec * 1000;
     s.realignMs = 0;
     window.simEvent?.('motorSlip');
@@ -2468,17 +2474,14 @@ class GameScene extends Phaser.Scene {
     const cfg = RULES.hazards.motorSlip;
     for (const s of this.measSlots) {
       if (s.jamAt === undefined || s.toStage) continue;
-      const inHutch = this.anyPlayerIn(this.stDefs[this.beamlines[s.blIdx].lockKey]);
-      if (inHutch && (s.jammed || s.jamWarned)) {
+      const inHutch = this.anyPlayerIn(this.stDefs[this.beamlines[s.blIdx].lockKey]) || this.robotWorking('hutchBot', s.blIdx);
+      if (inHutch && s.jammed) {
         s.realignMs += delta;
         if (s.realignMs >= cfg.realignSec * 1000) {
-          const wasJammed = s.jammed;
           delete s.jamAt;
           s.jammed = false;
-          s.jamWarned = false;
-          window.simEvent?.(wasJammed ? 'motorSlipFixed' : 'motorSlipPrevented');
-          this.flash(wasJammed ? `✅ BL-${s.blIdx+1} detector realigned — scan resumes in the control room`
-                               : `✅ BL-${s.blIdx+1} motor realigned before it could jam`, '#1a7a3a');
+          window.simEvent?.('motorSlipFixed');
+          this.flash(`✅ BL-${s.blIdx+1} detector realigned — the scan can resume`, '#1a7a3a');
         }
         continue;
       }
@@ -2514,7 +2517,7 @@ class GameScene extends Phaser.Scene {
         if ((s.degradeMs -= delta) <= 0) spoiled.push({ list: this.prepSlotsFor[pk], item: s });
       }
     }
-    for (const who of [this, this.coopOther]) {
+    for (const who of [this, this.coopOther, ...(this.robots || [])]) {
       if (!who) continue;
       for (const h of who.held) {
         if (h.degradeMs === undefined) continue;
@@ -2579,7 +2582,7 @@ class GameScene extends Phaser.Scene {
     // Drop any samples from this job the player is currently holding
     const heldBefore = this.held.length;
     this.held = this.held.filter(h => h.jobId !== j.id);
-    let heldLost = heldBefore - this.held.length;
+    let heldLost = heldBefore - this.held.length + (this._dropRobotSamples?.(j.id) || 0);
     if (this.coopOther) {
       const before = this.coopOther.held.length;
       this.coopOther.held = this.coopOther.held.filter(h => h.jobId !== j.id);
@@ -2655,6 +2658,7 @@ class GameScene extends Phaser.Scene {
       ringBase:Math.min(RULES.ring.max,Math.max(RULES.ring.floor,this.carryRing - RULES.ring.decayPerCycle + (this.upgrades.ringMaint ? RULES.ring.maintBonus : 0))),
       funding: this.funding,
       upgrades: this.upgrades,
+      victoryLap: !!this.victoryLap,
       beamlineTechs: this.beamlineTechs,
       penalties,
       proposalsDone:    this.cycleProposalsDone,
@@ -2797,7 +2801,7 @@ function _activeUpgradeNames(upg) {
   if (!upg) return [];
   const names = [];
   if (upg.ringMaint)                  names.push('ringMaint');
-  if (upg.predictiveMaint)            names.push('predictiveMaint');
+  if (upg.robots?.os)                 names.push('facilityOS');
   if (upg.cryoActivator)              names.push('cryoActivator');
   if (upg.prepSpeedMap) Object.entries(upg.prepSpeedMap).forEach(([k,v]) => { if (v < 1) names.push(`prepSpeed_${k}`); });
   if (upg.measSpeedMap) upg.measSpeedMap.forEach((v,i) => { if (v < 1) names.push(`measSpeed_bl${i}`); });

@@ -118,7 +118,9 @@ function buildCycleRow(run, cs) {
     measSpeed: [...meas],
     prepCap: up.prepCap || 1,
     ringMaint: !!up.ringMaint,
-    npcPositioning: !!up.npcPositioning,
+    robots: up.robots ? JSON.parse(JSON.stringify(up.robots)) : null,
+    measCap: up.measCap || 1,
+    victoryLap: !!d.victoryLap,   // this cycle ran fully automated
     botTime,
     custom: { ...c.custom },
   };

@@ -20,7 +20,7 @@ const ROOT = path.resolve(__dirname, '..');
 // Same order as BrilliantFacility.html. online.js is skipped: it builds the
 // lobby DOM and the game treats a missing window.coop as solo play.
 const GAME_SCRIPTS = ['js/data.js', 'js/ProposalReviewScene.js', 'js/CycleEndScene.js',
-  'js/YearEndScene.js', 'js/game.js', 'js/bot.js'];
+  'js/YearEndScene.js', 'js/game.js', 'js/robots.js', 'js/bot.js'];
 
 // ── Seeded RNG (mulberry32) ─────────────────────────────────────
 function makeRng(seed) {
