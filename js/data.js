@@ -51,6 +51,18 @@ const RULES = {
     prepCap:        { cost: 150000, fromYear: 2 },
     ringMaint:      { cost: 80000,  fromYear: 2 },
     npcPositioning: { cost: 100000, fromYear: 2 },
+    predictiveMaint:{ cost: 130000, fromYear: 2 },
+    cryoActivator:  { cost: 160000, fromYear: 2 },
+  },
+  // Hazards switch on from an absolute cycle number (cycle 2 = Year 1 Cycle 2, cycle 4 = Year 2 Cycle 1).
+  hazards: {
+    // A started scan may jam partway; stand in that beamline's hutch to realign it before the timeout,
+    // or the scan restarts from 0%. Predictive Maintenance warns at load time so it can be fixed early.
+    motorSlip:   { enabled: true, fromCycle: 2, chance: 0.15, realignSec: 1.0, timeoutSec: 12 },
+    // Prepped wet (biological) samples spoil if not loaded into a beamline within lifeSec.
+    // The clock runs on the prep table and in hand, and pauses during experiment setup.
+    // A spoiled sample is lost from its batch. The Cryo Auto-Activator prevents it.
+    degradation: { enabled: true, fromCycle: 4, lifeSec: 20, warnAt: 0.4 },
   },
 };
 

@@ -148,6 +148,14 @@ class FacilityBot {
       }
     }
 
+    // 2b. Hazard: a jammed (or, with Predictive Maintenance, drifting) detector —
+    //     stand in that beamline's hutch to realign it before the scan is lost
+    const jam = s.measSlots.find(ms => ms.jammed) || s.measSlots.find(ms => ms.jamWarned);
+    if (jam) {
+      const st = s.stDefs[s.beamlines[jam.blIdx].lockKey];
+      return { label: `realign BL-${jam.blIdx+1}`, x: st.boxCX, y: st.boxCY, interact: false };
+    }
+
     // 3. Stay in control room while measurement is actively running
     //    (measurements only tick when player is nearby — this is the core mechanic)
     for (const bl of s.beamlines) {
@@ -453,6 +461,8 @@ class FacilityBot {
       'extraJob',                                              // +1 postdoc worker
       'prepCap',                                              // 2× prep throughput
       'npcPositioning',                                       // shorter travel
+      'cryoActivator',                                        // no sample degradation
+      'predictiveMaint',                                      // motor slip warnings
       'measSpeed_0', 'measSpeed_1', 'measSpeed_2', 'measSpeed_3',  // shop keys are measSpeed_<blIdx>
       'prepSpeed_prep', 'prepSpeed_prep2',                    // cheap stacking bonuses
       'ringMaint',                                            // long-term stability

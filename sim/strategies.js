@@ -18,7 +18,7 @@
 //      "action": "bot" | "paper" | "train"   // "train" falls back to paper
 //    }
 //  Upgrade keys: prepSpeed_prep, prepSpeed_prep2, measSpeed_0..3, extraJob,
-//  prepCap, ringMaint, npcPositioning. "prepSpeed" and "measSpeed" expand
+//  prepCap, ringMaint, npcPositioning, predictiveMaint, cryoActivator. "prepSpeed" and "measSpeed" expand
 //  to all of their keys.
 // ════════════════════════════════════════════════════════════════
 'use strict';
@@ -28,7 +28,7 @@ const PRESETS = {
   save:     { name: 'save', proposals: 'bot', upgrades: 'none', action: 'paper' },
   speed:    { name: 'speed', proposals: 'bot', upgrades: ['measSpeed', 'prepSpeed'], action: 'paper' },
   staff:    { name: 'staff', proposals: 'bot', upgrades: ['extraJob', 'prepCap', 'npcPositioning'], maxPostdocs: 2, reserve: 100000, action: 'bot' },
-  balanced: { name: 'balanced', proposals: 'bot', upgrades: ['measSpeed', 'prepCap', 'npcPositioning', 'extraJob', 'prepSpeed', 'ringMaint'], maxPostdocs: 2, reserve: 100000, action: 'bot' },
+  balanced: { name: 'balanced', proposals: 'bot', upgrades: ['measSpeed', 'prepCap', 'npcPositioning', 'cryoActivator', 'predictiveMaint', 'extraJob', 'prepSpeed', 'ringMaint'], maxPostdocs: 2, reserve: 100000, action: 'bot' },
 };
 
 function expandKeys(list) {

@@ -332,6 +332,12 @@ class CycleEndScene extends Phaser.Scene {
       { key:'npcPositioning', label:'User Coordination', desc:'Users wait halfway between their\nprep lab and beamline — less walking', cost:RULES.upgrades.npcPositioning.cost,
         show:()=>d.year >= RULES.upgrades.npcPositioning.fromYear,
         canBuy:()=>!this.upgrades.npcPositioning, apply:()=>this.upgrades.npcPositioning=true },
+      { key:'predictiveMaint', label:'Predictive Maintenance', desc:'Warns of detector motor slips when\na sample is loaded, so you can\nrealign before the scan jams', cost:RULES.upgrades.predictiveMaint.cost,
+        show:()=>d.year >= RULES.upgrades.predictiveMaint.fromYear,
+        canBuy:()=>!this.upgrades.predictiveMaint, apply:()=>this.upgrades.predictiveMaint=true },
+      { key:'cryoActivator', label:'Cryo Auto-Activator', desc:'Keeps prepped wet samples cold —\nthey no longer degrade', cost:RULES.upgrades.cryoActivator.cost,
+        show:()=>d.year >= RULES.upgrades.cryoActivator.fromYear,
+        canBuy:()=>!this.upgrades.cryoActivator, apply:()=>this.upgrades.cryoActivator=true },
     ];
 
     const visibleUpgrades = UPGRADES.filter(u => !u.show || u.show());
