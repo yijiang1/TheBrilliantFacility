@@ -67,7 +67,7 @@ const RULES = {
     // can be bought from the shop after cycle fromCycle-1, so a perfect player buys the stages in the
     // shops after cycles 12, 13 and 14 and cycle 15 (Year 5 Cycle 3) is the victory lap. Stages let a
     // player who is behind spread the cost across years (unspent funding over the carryover cap is lost).
-    facilityOS:   { cost: 400000, stages: 3, fromCycle: 15 },
+    facilityOS:   { cost: 450000, stages: 3, fromCycle: 15 },
     sampleChanger:{ cost: 200000, fromCycle: 10, max: 1 },   // each beamline holds 2 samples (with Hutch Bots)
     walkSpeed: 160,                                          // px/s (the player walks at 172)
     fault: { fromCycle: 7, chance: 0.08, rebootSec: 1.0, postdocRebootSec: 4 },
