@@ -92,6 +92,21 @@ Or pass a JSON file or a `strategy` object:
   "reserve": 100000, "action": "train" }
 ```
 
+## Searching buying orders
+
+`sim/search.js` looks for the strongest between-cycle plan at a given skill:
+the shop order, which lab upgrades to buy, how many postdocs, the funding
+reserve, and paper vs train. Every plan plays the same seeds; plans are ranked
+by the mean first fully automated cycle, then by reputation at the end. It
+starts from the presets and random plans, then mutates the best ones.
+
+```sh
+node sim/search.js --skill perfect --evals 120 --runs 8 --years 6 --out sim/reports/search-perfect
+node sim/run.js --strategy sim/reports/search-perfect.best.json --runs 20 --seed 201
+```
+
+Check the winner on fresh seeds (`--seed`), since the search picks it on its own seeds.
+
 ## Comparing variants
 
 `--variants FILE` takes a map of variant names to level overrides. It runs each
