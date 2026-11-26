@@ -72,8 +72,17 @@ prices, limits and unlock years apply.
 | `bot` | bot | bot's own priority order | train, else paper |
 | `save` | bot | buys nothing | paper |
 | `speed` | bot | measurement, then prep speed | paper |
-| `staff` | bot | postdocs (max 2), prep room, user coordination; keeps 100K | train, else paper |
-| `balanced` | bot | measurement, prep room, coordination, postdocs (max 2), prep speed, ring; keeps 100K | train, else paper |
+| `staff` | bot | postdocs (max 2), prep room; keeps 100K | train, else paper |
+| `balanced` | bot | measurement, prep room, cryo, postdocs (max 2), prep speed, ring; keeps 100K | train, else paper |
+| `perfect` | bot | robots as soon as they unlock, no postdocs | paper |
+| `typical` | bot | robots, 1 postdoc, prep room, cryo; walks at 75% speed and re-decides every 1s | train, else paper |
+| `weaker` | bot | postdocs (max 2), prep room, measurement, then robots; keeps 50K; walks at 60% and re-decides every 2s | train, else paper |
+
+`perfect`, `typical` and `weaker` check the robot path: the cycle each run's
+Facility OS comes online is the first row with `robots.os` true, and the first
+fully automated cycle is the first row with `victoryLap` true. Two extra fields
+model skill: `playerSpeed` (1 = the bot's full walking speed) and `thinkMs`
+(how often the player picks a new goal; the bot re-decides every 250 ms).
 
 Or pass a JSON file or a `strategy` object:
 
@@ -82,6 +91,21 @@ Or pass a JSON file or a `strategy` object:
   "proposals": { "count": 4 }, "upgrades": ["measSpeed", "extraJob", "prepCap"],
   "reserve": 100000, "action": "train" }
 ```
+
+## Searching buying orders
+
+`sim/search.js` looks for the strongest between-cycle plan at a given skill:
+the shop order, which lab upgrades to buy, how many postdocs, the funding
+reserve, and paper vs train. Every plan plays the same seeds; plans are ranked
+by the mean first fully automated cycle, then by reputation at the end. It
+starts from the presets and random plans, then mutates the best ones.
+
+```sh
+node sim/search.js --skill perfect --evals 120 --runs 8 --years 6 --out sim/reports/search-perfect
+node sim/run.js --strategy sim/reports/search-perfect.best.json --runs 20 --seed 201
+```
+
+Check the winner on fresh seeds (`--seed`), since the search picks it on its own seeds.
 
 ## Comparing variants
 
@@ -101,6 +125,7 @@ Each cycle produces one row (`--out` writes them to CSV and JSON).
 | `beamStops`, `rapidAccepted`, `rapidExpired` | Hazard and rapid-review activity |
 | `grant`, `salary`, `carryover`, `forfeited` | Year-end economy. `forfeited` is funding lost to the carryover cap |
 | `spent`, `purchases`, `action`, `reputation`, `funding`, `postdocs` | Shop and between-cycle choice, and the state after them |
+| `robots`, `measCap`, `victoryLap` | Robots owned after the shop, beamline capacity, and whether this cycle ran fully automated |
 | `botTime` | Seconds the bot spent on each goal. A goal that keeps growing points to a bottleneck |
 | `custom` | Counts from `window.simEvent?.('name')` calls in game code |
 

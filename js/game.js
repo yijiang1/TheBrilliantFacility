@@ -439,6 +439,7 @@ class GameScene extends Phaser.Scene {
     this.buildActivePanel();
     this.buildPlayer();       // player AFTER stations so it renders on top
     this.buildPostdocs();     // postdocs after player (depth 9, under player depth 10)
+    this.buildRobots();       // robots.js — automation units bought in the shop
     this.buildProgressBar();  // progress bar AFTER player
     this.buildHUD();
     
@@ -459,6 +460,7 @@ class GameScene extends Phaser.Scene {
     if (!window.coop?.isGuest) {
       this.time.addEvent({delay:1000, callback:this.onTick,    callbackScope:this, loop:true});
       this.schedulePotentialBeamStop();
+      this.scheduleRobotFaults();
       this.scheduleSpawn(3000);
       // Seed one rapid-review proposal after a short delay
       this.time.delayedCall(20000, () => this.spawnProposal(), [], this);
@@ -1711,7 +1713,7 @@ class GameScene extends Phaser.Scene {
         if(readyIdx>=0){
           if(this.held.length>=MAX_HELD){this.flash('Hands full — no room to pick up!','#ff4433');return;}
           const s=mySlots.splice(readyIdx,1)[0];
-          this.held.push({sampleId:s.sampleId,jobId:s.jobId,stage:'prepped'});
+          this.held.push({sampleId:s.sampleId,jobId:s.jobId,stage:'prepped',degradeMs:s.degradeMs,degradeTotal:s.degradeTotal});
           this.refreshJobs();
           const _pj=this.active.find(a=>a.id===s.jobId);
           const _tbl=_pj?this.beamlineTechs.indexOf(_pj.tech):-1;
@@ -1748,6 +1750,7 @@ class GameScene extends Phaser.Scene {
     for (const bl of this.beamlines) {
       const lock = this.stDefs[bl.lockKey];
       if(this.isPointInSt(lock, this.px, this.py)){
+        if (this.handToHutchBot(bl.idx)) return;
         const blTech = this.beamlineTechs[bl.idx];
         const prepIdx = this.held.findIndex(h => {
           if (h.stage !== 'prepped') return false;
@@ -1805,6 +1808,7 @@ class GameScene extends Phaser.Scene {
             ? _mJob1.measDurs.shift()
             : Phaser.Math.FloatBetween(DUR_MEAS_MIN, DUR_MEAS_MAX) * (this._measSpeedMap[bl.idx] || 1.0);
           this.measSlots.push({sampleId:item.sampleId,jobId:item.jobId, remaining:durMeas1*1000, total:durMeas1*1000, blIdx: bl.idx, started: false});
+          this._rollMotorSlip(this.measSlots[this.measSlots.length - 1]);
           this.redrawBeam();
           this.refreshJobs(); this.refreshNPCs();
           this.flash(`Sample loaded at BL-${bl.idx+1} — go to Control Room and press [Space] to measure`,'#44ccff');
@@ -1877,12 +1881,12 @@ class GameScene extends Phaser.Scene {
 
     // Prep slots: tick while player or postdoc is near; pause if neither
     for (const pk of this.prepKeys) {
-      const nearThis = hasAuto || this.anyPlayerIn(this.stDefs[pk])
+      const nearThis = hasAuto || this.anyPlayerIn(this.stDefs[pk]) || this.robotWorking('prepBot', pk)
         || this.postdocs.some(pd => this.isPointInSt(this.stDefs[pk], pd.x, pd.y));
       for (const s of this.prepSlotsFor[pk]) {
         if (!s.toStage && nearThis) {
           s.remaining -= delta;
-          if (s.remaining <= 0) s.toStage = 'prepped_ready';
+          if (s.remaining <= 0) { s.toStage = 'prepped_ready'; this._startCryoClock(s); }
         }
       }
     }
@@ -1890,12 +1894,13 @@ class GameScene extends Phaser.Scene {
     if (!this.beamDump) {
       const _l3AutoCollect = [];
       for(const s of this.measSlots){
-        if(!s.toStage && s.started){
+        if(!s.toStage && s.started && !s.jammed){
           const bl = this.beamlines[s.blIdx];
-          const playerNearMeas = hasAuto || this.anyPlayerIn(this.stDefs[bl.measKey])
+          const playerNearMeas = hasAuto || this.anyPlayerIn(this.stDefs[bl.measKey]) || this.robotWorking('consoleBot', s.blIdx)
             || this.postdocs.some(pd => this.isPointInSt(this.stDefs[bl.measKey], pd.x, pd.y));
           if(playerNearMeas) {
             s.remaining -= delta;
+            if (s.jamAt !== undefined && 1 - s.remaining / s.total >= s.jamAt) { this._jamMotor(s); continue; }
             if(s.remaining <= 0) {
               s.toStage = 'meas_ready';
               // Level 3: postdoc present auto-collects the result so the player doesn't have to return
@@ -1923,6 +1928,7 @@ class GameScene extends Phaser.Scene {
 
     this.pCon.setPosition(this.px,this.py);
     this.updatePostdocs(delta);
+    this.updateRobots(delta);
 
     this.renderPlayer();
 
@@ -1939,6 +1945,8 @@ class GameScene extends Phaser.Scene {
     }
 
     this.updateExperimentSetup(dt);
+    this.updateMotorSlips(delta);
+    this.updateDegradation(delta);
 
     // ── Space key (single press) ──
     if(Phaser.Input.Keyboard.JustDown(this.spaceKey)) this.tryInteract();
@@ -2060,6 +2068,11 @@ class GameScene extends Phaser.Scene {
           _blCol = lt === 'wet' ? 0x2266cc : 0xaa8822;
         } else {
           stageIcon = {prepped:'P',exp_setup_done:'🔒'}[item.stage]||'?';
+          if (item.degradeMs !== undefined) {
+            stageIcon = '❄';
+            const low = item.degradeMs <= item.degradeTotal * RULES.hazards.degradation.warnAt;
+            if (low && Math.floor(this.time.now / 250) % 2 === 0) _blCol = 0xdd2211;
+          }
         }
         d.setPosition(this.px-12+i*14,this.py-26).setFillStyle(_blCol).setVisible(true);
         t.setPosition(this.px-12+i*14,this.py-26).setText(stageIcon).setVisible(true);
@@ -2073,6 +2086,17 @@ class GameScene extends Phaser.Scene {
       this.roomHighlightG.clear();
       const pulse = Math.sin(this.time.now / 280) * 0.5 + 0.5; // 0..1
       const alpha = 0.12 + pulse * 0.28;                        // 0.12..0.40
+      for (const s of this.measSlots) {
+        if (!s.jammed) continue;
+        const geo = this.roomGeo.find(r => r.key === `exp_setup_${s.blIdx}`);
+        if (!geo) continue;
+        const { cx, cy, w, h, rad } = geo;
+        const cos = Math.cos(rad), sin = Math.sin(rad);
+        const c = [[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]].map(([x,y]) => ({ x: cx + x*cos - y*sin, y: cy + x*sin + y*cos }));
+        this.roomHighlightG.fillStyle(0xdd2211, alpha + 0.1);
+        this.roomHighlightG.fillTriangle(c[0].x, c[0].y, c[1].x, c[1].y, c[2].x, c[2].y);
+        this.roomHighlightG.fillTriangle(c[0].x, c[0].y, c[2].x, c[2].y, c[3].x, c[3].y);
+      }
       for (const item of this.held) {
         const job = this.active.find(a => a.id === item.jobId);
         if (!job) continue;
@@ -2148,6 +2172,7 @@ class GameScene extends Phaser.Scene {
                 ? _mJob2.measDurs.shift()
                 : Phaser.Math.FloatBetween(DUR_MEAS_MIN, DUR_MEAS_MAX) * (this._measSpeedMap[finishedBl] || 1.0);
               this.measSlots.push({sampleId:item.sampleId,jobId:item.jobId, remaining:durMeas2*1000, total:durMeas2*1000, blIdx: finishedBl, started: false});
+              this._rollMotorSlip(this.measSlots[this.measSlots.length - 1]);
               this.redrawBeam();
               this.flash(`Sample loaded at BL-${finishedBl+1} — go to Control Room and press [Space] to measure`,'#44ccff');
             } else {
@@ -2230,6 +2255,8 @@ class GameScene extends Phaser.Scene {
 
   // Returns a context-sensitive prompt for what Space will do
   getPrompt() {
+    const _fr = this.faultedRobot?.();
+    if (_fr && Math.hypot(this.px - _fr.x, this.py - _fr.y) < 36) return 'Hold still — rebooting the robot...';
     // Near user with unstarted samples
     for(let i=0;i<MAX_SLOTS;i++){
       const j=this.active[i];
@@ -2263,6 +2290,12 @@ class GameScene extends Phaser.Scene {
       const lock=this.stDefs[bl.lockKey];
       if(this.isPointInSt(lock, this.px, this.py)){
         const blTech = this.beamlineTechs[bl.idx];
+        const _jam = this.measSlots.find(s => s.blIdx === bl.idx && s.jammed);
+        if(_jam && !this.robotWorking('hutchBot', bl.idx)) return 'Hold still — realigning the detector arm...';
+        if (this.robotWorking('hutchBot', bl.idx)) {
+          const _mine = this.held.some(h => h.stage === 'prepped' && this.active.find(a => a.id === h.jobId)?.tech === blTech);
+          return _mine ? `[Space] Hand sample to the BL-${bl.idx+1} Hutch Bot` : `BL-${bl.idx+1} Hutch Bot: ${blTech}`;
+        }
         const _occupied = this.measSlots.some(s => s.blIdx === bl.idx);
         if(_occupied) return `BL-${bl.idx+1} hutch occupied — wait for measurement to finish`;
         if(this.doingExpSetup && this.activeExpSetupIdx === bl.idx) return 'Hold still — setting up experiment...';
@@ -2283,6 +2316,7 @@ class GameScene extends Phaser.Scene {
       if(this.isPointInSt(meas, this.px, this.py)){
         const activeBLMeas = this.measSlots.filter(s => s.blIdx === bl.idx);
         if(activeBLMeas.some(s=>s.toStage==='meas_ready')) return `[Space] Collect BL-${bl.idx+1} measurement result ✅`;
+        if(activeBLMeas.some(s=>s.jammed)) return `BL-${bl.idx+1} detector jammed — realign it in the hutch!`;
         if(activeBLMeas.some(s=>!s.started && !s.toStage)) return `[Space] Start BL-${bl.idx+1} measurement`;
         if(activeBLMeas.some(s=>s.started && !s.toStage)) return `BL-${bl.idx+1} measuring...`;
         if(this.held.some(h=>h.stage==='exp_setup_done' && h.expBlIdx===bl.idx) && activeBLMeas.length<this.measCap) return `[Space] Load sample into BL-${bl.idx+1}`;
@@ -2321,10 +2355,10 @@ class GameScene extends Phaser.Scene {
         const total = s.total || (isMeas ? (DUR_MEAS_MIN+DUR_MEAS_MAX)/2*1000 : (DUR_PREP_MIN+DUR_PREP_MAX)/2*1000);
         const frac = Math.min(1, Math.max(0, (total - Math.max(0, s.remaining)) / total));
         const paused = !playerNear && started;
-        const label = isMeas ? `ACQUIRING DATA` : 'PREP';
+        const label = s.jammed ? `JAMMED — REALIGN IN HUTCH ${Math.ceil(s.jamLeftMs / 1000)}s` : isMeas ? `ACQUIRING DATA` : 'PREP';
         bar.setFraction(frac)
-           .setFillStyle(!started ? 0x8899aa : paused ? 0xccaa44 : 0x44ccaa)
-           .setLabel(label, '#1a3a5a')
+           .setFillStyle(s.jammed ? 0xdd3322 : !started ? 0x8899aa : paused ? 0xccaa44 : 0x44ccaa)
+           .setLabel(label, s.jammed ? '#7a0a00' : '#1a3a5a')
            .show();
       } else if (bar) {
         bar.hide();
@@ -2414,6 +2448,132 @@ class GameScene extends Phaser.Scene {
     job.leaveMs      = job.leaveMsTotal;
   }
 
+  // ── Hazards (M2) — numbers live in RULES.hazards in js/data.js ──
+  _hazardOn(name) {
+    if (this.victoryLap) return false;   // the robots handle everything on the victory lap
+    const h = RULES.hazards[name];
+    return !!h && h.enabled !== false && this.cycle >= (h.fromCycle || 1);
+  }
+
+  // Motor slip: rolled when a sample is loaded; the scan jams partway through.
+  _rollMotorSlip(slot) {
+    if (!slot || !this._hazardOn('motorSlip') || Math.random() >= RULES.hazards.motorSlip.chance) return;
+    slot.jamAt = Phaser.Math.FloatBetween(0.25, 0.75);   // fraction of the scan where the arm jams
+    slot.realignMs = 0;
+  }
+
+  _jamMotor(s) {
+    s.jammed = true;
+    s.jamLeftMs = RULES.hazards.motorSlip.timeoutSec * 1000;
+    s.realignMs = 0;
+    window.simEvent?.('motorSlip');
+    this.flash(`🔧 BL-${s.blIdx+1} detector arm jammed! Realign it in the hutch within ${RULES.hazards.motorSlip.timeoutSec}s`, '#cc4400');
+  }
+
+  updateMotorSlips(delta) {
+    const cfg = RULES.hazards.motorSlip;
+    for (const s of this.measSlots) {
+      if (s.jamAt === undefined || s.toStage) continue;
+      const inHutch = this.anyPlayerIn(this.stDefs[this.beamlines[s.blIdx].lockKey]) || this.robotWorking('hutchBot', s.blIdx);
+      if (inHutch && s.jammed) {
+        s.realignMs += delta;
+        if (s.realignMs >= cfg.realignSec * 1000) {
+          delete s.jamAt;
+          s.jammed = false;
+          window.simEvent?.('motorSlipFixed');
+          this.flash(`✅ BL-${s.blIdx+1} detector realigned — the scan can resume`, '#1a7a3a');
+        }
+        continue;
+      }
+      if (!inHutch) s.realignMs = 0;
+      if (s.jammed) {
+        s.jamLeftMs -= delta;
+        if (s.jamLeftMs <= 0) {
+          s.remaining = s.total;   // scan data is unusable; start over once realigned
+          delete s.jamAt;
+          s.jammed = false;
+          window.simEvent?.('motorSlipTimeout');
+          this.flash(`💥 BL-${s.blIdx+1} scan ruined by the jam — it restarts from 0%`, '#cc1100');
+        }
+      }
+    }
+  }
+
+  // Sample degradation: prepped wet (biological) samples spoil unless loaded in time.
+  _startCryoClock(slot) {
+    if (!this._hazardOn('degradation') || this.upgrades.cryoActivator) return;
+    const j = this.active.find(a => a.id === slot.jobId);
+    if (!j || j.labType !== 'wet' || j.cryo === false) return;
+    slot.degradeTotal = slot.degradeMs = RULES.hazards.degradation.lifeSec * 1000;
+  }
+
+  updateDegradation(delta) {
+    if (this.upgrades.cryoActivator) return;
+    const warnAt = RULES.hazards.degradation.warnAt;
+    const spoiled = [];
+    for (const pk of this.prepKeys) {
+      for (const s of this.prepSlotsFor[pk]) {
+        if (s.toStage !== 'prepped_ready' || s.degradeMs === undefined) continue;
+        if ((s.degradeMs -= delta) <= 0) spoiled.push({ list: this.prepSlotsFor[pk], item: s });
+      }
+    }
+    for (const who of [this, this.coopOther, ...(this.robots || [])]) {
+      if (!who) continue;
+      for (const h of who.held) {
+        if (h.degradeMs === undefined) continue;
+        if (who.doingExpSetup && h.sampleId === who.setupSampleId) continue;   // on the hutch cryostream
+        const before = h.degradeMs;
+        h.degradeMs -= delta;
+        if (who === this && before > h.degradeTotal * warnAt && h.degradeMs <= h.degradeTotal * warnAt) {
+          const j = this.active.find(a => a.id === h.jobId);
+          this.flash(`❄ ${j ? j.name + ' sample' : 'Sample'} is warming up — load it into a beamline fast!`, '#cc7700');
+        }
+        if (h.degradeMs <= 0) spoiled.push({ list: who.held, item: h });
+      }
+    }
+    for (const { list, item } of spoiled) this._loseSpoiledSample(list, item);
+  }
+
+  _loseSpoiledSample(list, item) {
+    const i = list.indexOf(item);
+    if (i < 0) return;
+    list.splice(i, 1);
+    window.simEvent?.('sampleDegraded');
+    const j = this.active.find(a => a.id === item.jobId);
+    if (!j) return;
+    const total = j.totalSamples;
+    j.totalSamples -= 1;
+    const repLoss = Math.max(1, Math.round(j.rep * 0.5 / total));
+    this.reputation = Math.max(0, this.reputation - repLoss);
+    this.repTxt.setText(`⭐ ${this.reputation} rep`);
+    this.flash(`🫠 ${j.name} sample degraded and was lost  −${repLoss} rep`, '#ff4433');
+    if (j.totalSamples <= 0) {
+      this.proposalLog.push({
+        year: this.year, cycle: this.cycle, cycleInYear: this.cycleInYear,
+        name: j.name, tech: j.tech, labType: j.labType || 'dry',
+        samplesRequired: total, samplesDone: 0, repEarned: 0, penalty: -repLoss, outcome: 'failed',
+      });
+      if (j.npcSlot >= 0) this._releaseNpcSlot(j.npcSlot);
+      this.active.splice(this.active.indexOf(j), 1);
+      this.restockProposalHub();
+    } else if (j.done >= j.totalSamples) {
+      // The spoiled sample was the last one outstanding — the rest are done
+      this.reputation += j.rep;
+      this.cycleProposalsDone++;
+      this.cycleRepEarned += j.rep;
+      this.repTxt.setText(`⭐ ${this.reputation} rep`);
+      this.proposalLog.push({
+        year: this.year, cycle: this.cycle, cycleInYear: this.cycleInYear,
+        name: j.name, tech: j.tech, labType: j.labType || 'dry',
+        samplesRequired: total, samplesDone: j.done, repEarned: j.rep, penalty: -repLoss, outcome: 'completed',
+      });
+      if (j.npcSlot >= 0) this._releaseNpcSlot(j.npcSlot);
+      this.active.splice(this.active.indexOf(j), 1);
+      this.restockProposalHub();
+    }
+    this.refreshJobs(); this.refreshNPCs();
+  }
+
   userNpcLeaves(j) {
     const lost = j.unstarted;
     const originalTotal = j.totalSamples;
@@ -2422,7 +2582,7 @@ class GameScene extends Phaser.Scene {
     // Drop any samples from this job the player is currently holding
     const heldBefore = this.held.length;
     this.held = this.held.filter(h => h.jobId !== j.id);
-    let heldLost = heldBefore - this.held.length;
+    let heldLost = heldBefore - this.held.length + (this._dropRobotSamples?.(j.id) || 0);
     if (this.coopOther) {
       const before = this.coopOther.held.length;
       this.coopOther.held = this.coopOther.held.filter(h => h.jobId !== j.id);
@@ -2498,6 +2658,7 @@ class GameScene extends Phaser.Scene {
       ringBase:Math.min(RULES.ring.max,Math.max(RULES.ring.floor,this.carryRing - RULES.ring.decayPerCycle + (this.upgrades.ringMaint ? RULES.ring.maintBonus : 0))),
       funding: this.funding,
       upgrades: this.upgrades,
+      victoryLap: !!this.victoryLap,
       beamlineTechs: this.beamlineTechs,
       penalties,
       proposalsDone:    this.cycleProposalsDone,
@@ -2640,6 +2801,8 @@ function _activeUpgradeNames(upg) {
   if (!upg) return [];
   const names = [];
   if (upg.ringMaint)                  names.push('ringMaint');
+  if (upg.robots?.os)                 names.push('facilityOS');
+  if (upg.cryoActivator)              names.push('cryoActivator');
   if (upg.prepSpeedMap) Object.entries(upg.prepSpeedMap).forEach(([k,v]) => { if (v < 1) names.push(`prepSpeed_${k}`); });
   if (upg.measSpeedMap) upg.measSpeedMap.forEach((v,i) => { if (v < 1) names.push(`measSpeed_bl${i}`); });
   if ((upg.prepCap    || 1)  > 1)     names.push('prepCap');

@@ -130,6 +130,14 @@ class FacilityBot {
   // ── Goal selection (priority-ordered) ──────────────────────
   _decide(s) {
 
+    // 0. Victory lap — the robots run everything; just watch.
+    if (s.victoryLap) return null;
+    const conBot = (bl) => !!s.robotWorking?.('consoleBot', bl);
+
+    // 0b. A robot broke down — stand next to it to reboot it.
+    const broken = s.faultedRobot?.();
+    if (broken) return { label: `reboot ${broken.kind}`, x: broken.x, y: broken.y, interact: false };
+
     // 1. If holding exp_setup_done sample → head to that beamline's control room
     const doneItem = s.held.find(h => h.stage === 'exp_setup_done');
     if (doneItem) {
@@ -142,15 +150,25 @@ class FacilityBot {
 
     // 2. Collect any ready measurement results (clears slots for next sample)
     for (const bl of s.beamlines) {
+      if (conBot(bl.idx)) continue;   // a Console Bot collects on its own
       if (s.measSlots.find(ms => ms.toStage === 'meas_ready' && ms.blIdx === bl.idx)) {
         const st = s.stDefs[bl.measKey];
         return { label: `collect meas BL-${bl.idx+1}`, x: st.boxCX, y: st.boxCY, interact: true };
       }
     }
 
+    // 2b. Hazard: a jammed detector — stand in that beamline's hutch to realign
+    //     it before the scan is lost (a Hutch Bot does this on its own beamline)
+    const jam = s.measSlots.find(ms => ms.jammed && !s.robotWorking?.('hutchBot', ms.blIdx));
+    if (jam) {
+      const st = s.stDefs[s.beamlines[jam.blIdx].lockKey];
+      return { label: `realign BL-${jam.blIdx+1}`, x: st.boxCX, y: st.boxCY, interact: false };
+    }
+
     // 3. Stay in control room while measurement is actively running
     //    (measurements only tick when player is nearby — this is the core mechanic)
     for (const bl of s.beamlines) {
+      if (conBot(bl.idx)) continue;
       if (s.measSlots.find(ms => ms.started && !ms.toStage && ms.blIdx === bl.idx)) {
         const st = s.stDefs[bl.measKey];
         return { label: `wait meas BL-${bl.idx+1}`, x: st.boxCX, y: st.boxCY, interact: false };
@@ -159,6 +177,7 @@ class FacilityBot {
 
     // 4. Start a deposited-but-not-started measurement at control room
     for (const bl of s.beamlines) {
+      if (conBot(bl.idx)) continue;
       if (s.measSlots.find(ms => !ms.started && !ms.toStage && ms.blIdx === bl.idx)) {
         const st = s.stDefs[bl.measKey];
         return { label: `start meas BL-${bl.idx+1}`, x: st.boxCX, y: st.boxCY, interact: true };
@@ -183,7 +202,10 @@ class FacilityBot {
         if (blIdx >= 0) {
           const bl = s.beamlines[blIdx];
           const st = s.stDefs[bl.lockKey];
-          const occupied = s.measSlots.some(ms => ms.blIdx === blIdx);
+          // A Hutch Bot takes the sample whenever its rack has room.
+          const hutchBot = !!s.robotWorking?.('hutchBot', blIdx);
+          const occupied = hutchBot ? (s.hutchRack?.[blIdx]?.length ?? 0) >= 2
+                                    : s.measSlots.some(ms => ms.blIdx === blIdx);
           if (!occupied) {
             return { label: `hutch BL-${blIdx+1}`, x: st.boxCX, y: st.boxCY, interact: true };
           }
@@ -215,8 +237,11 @@ class FacilityBot {
       if (s.prepSlotsFor[pk].length < s.prepCap) {
         return { label: `deposit ${rawItem.labType} lab`, x: st.x, y: st.y, interact: true };
       }
-      // Prep table full — stand next to it so processing continues (proximity-gated)
-      return { label: `wait ${rawItem.labType} lab`, x: st.x, y: st.y, interact: false };
+      // Prep table full — stand next to it so processing continues (proximity-gated),
+      // unless a Prep Bot is already keeping it running.
+      if (!s.robotWorking?.('prepBot', pk)) {
+        return { label: `wait ${rawItem.labType} lab`, x: st.x, y: st.y, interact: false };
+      }
     }
 
     // 9. Collect raw sample — batch by lab type, but urgency overrides batching
@@ -450,9 +475,13 @@ class FacilityBot {
   //   postdoc > prep room cap > user coordination > beamline speed > prep speed > ring
   _doCycleUpgrades(cs) {
     const PRIORITY = [
-      'extraJob',                                              // +1 postdoc worker
+      'extraJob',                                              // +1 postdoc worker (max 2)
       'prepCap',                                              // 2× prep throughput
-      'npcPositioning',                                       // shorter travel
+      'facilityOS',                                           // finish the automation path
+      'hutchBot', 'consoleBot', 'prepBot',                    // robots, one station at a time
+      'courierBot', 'receptionBot',
+      'cryoActivator',                                        // no sample degradation
+      'sampleChanger',
       'measSpeed_0', 'measSpeed_1', 'measSpeed_2', 'measSpeed_3',  // shop keys are measSpeed_<blIdx>
       'prepSpeed_prep', 'prepSpeed_prep2',                    // cheap stacking bonuses
       'ringMaint',                                            // long-term stability

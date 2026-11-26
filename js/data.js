@@ -51,6 +51,36 @@ const RULES = {
     prepCap:        { cost: 150000, fromYear: 2 },
     ringMaint:      { cost: 80000,  fromYear: 2 },
     npcPositioning: { cost: 100000, fromYear: 2 },
+    cryoActivator:  { cost: 160000, fromYear: 2 },
+    hireMax:        2,                                 // GDD cap on postdocs
+  },
+  // Robots take over the sample loop one step at a time (Robots tab of the shop).
+  // fromCycle = the first cycle a robot can work in, so it appears in the shop after cycle fromCycle-1.
+  // Facility OS needs every other robot; the cycle after it is bought is the victory lap.
+  robots: {
+    prepBot:      { cost: 60000,  fromCycle: 2,  max: 2 },   // one per lab: prep runs with nobody there
+    consoleBot:   { cost: 90000,  fromCycle: 4,  max: 4 },   // one per beamline: starts, runs and collects scans
+    hutchBot:     { cost: 80000,  fromCycle: 7,  max: 4 },   // one per beamline: experiment setup, fixes motor slips
+    courierBot:   { cost: 140000, fromCycle: 9,  max: 2 },   // carries prepped samples from the labs to the hutches
+    receptionBot: { cost: 150000, fromCycle: 11, max: 2 },   // collects samples from users and takes them to the labs
+    // Accepts proposals and brings in users. Installed in `stages` parts, one per shop; the last part
+    // can be bought from the shop after cycle fromCycle-1, so a perfect player buys the stages in the
+    // shops after cycles 12, 13 and 14 and cycle 15 (Year 5 Cycle 3) is the victory lap. Stages let a
+    // player who is behind spread the cost across years (unspent funding over the carryover cap is lost).
+    facilityOS:   { cost: 450000, stages: 3, fromCycle: 15 },
+    sampleChanger:{ cost: 200000, fromCycle: 10, max: 1 },   // each beamline holds 2 samples (with Hutch Bots)
+    walkSpeed: 160,                                          // px/s (the player walks at 172)
+    fault: { fromCycle: 7, chance: 0.08, rebootSec: 1.0, postdocRebootSec: 4 },
+  },
+  // Hazards switch on from an absolute cycle number (cycle 2 = Year 1 Cycle 2, cycle 4 = Year 2 Cycle 1).
+  hazards: {
+    // A started scan may jam partway; stand in that beamline's hutch to realign it before the timeout,
+    // or the scan restarts from 0%. A Hutch Bot realigns its own beamline.
+    motorSlip:   { enabled: true, fromCycle: 2, chance: 0.15, realignSec: 1.0, timeoutSec: 12 },
+    // Prepped wet (biological) samples spoil if not loaded into a beamline within lifeSec.
+    // The clock runs on the prep table and in hand, and pauses during experiment setup.
+    // A spoiled sample is lost from its batch. The Cryo Auto-Activator prevents it.
+    degradation: { enabled: true, fromCycle: 4, lifeSec: 20, warnAt: 0.4 },
   },
 };
 
